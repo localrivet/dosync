@@ -36,6 +36,11 @@ VERSION?=0.1.0
 LDFLAGS=-ldflags "-X main.Version=${VERSION}"
 BUILD_DIR=release
 
+# Docker Hub parameters
+IMAGE_NAME=localrivet/dosync
+TAG ?= latest
+VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
+
 .PHONY: all clean build build-linux build-darwin build-all
 
 all: clean build-all
@@ -93,13 +98,17 @@ run:
 	./release/${GOOS}/$(GOARCH)/$(EXECUTABLE)
 
 .PHONY: docker-build
+# Build the Docker image for Docker Hub
 docker-build:
-	$(DOCKER_BUILD) -t $(REGISTRY_URL):latest -t $(REGISTRY_URL):$(TAG)-$(TIMESTAMP)-$(COMMIT_HASH) .
+	$(DOCKER) build -t $(IMAGE_NAME):$(TAG) .
+
+.PHONY: docker-tag
+# Tag the image with the current version (from git)
+docker-tag:
+	$(DOCKER) tag $(IMAGE_NAME):$(TAG) $(IMAGE_NAME):$(VERSION)
 
 .PHONY: docker-push
+# Push both :latest and :<version> tags to Docker Hub
 docker-push:
-	@echo "To push to DigitalOcean Container Registry, first login with:"
-	@echo "doctl registry login"
-	@echo "Then run the following commands:"
-	@echo "docker push $(REGISTRY_URL):latest"
-	@echo "docker push $(REGISTRY_URL):$(TAG)-$(TIMESTAMP)-$(COMMIT_HASH)"
+	$(DOCKER) push $(IMAGE_NAME):$(TAG)
+	$(DOCKER) push $(IMAGE_NAME):$(VERSION)
