@@ -1,10 +1,3 @@
-# Check if the environment file exists
-ENVFILE := ./env/postgres.env
-ifneq ("$(wildcard $(ENVFILE))","")
-	include $(ENVFILE)
-	export $(shell sed 's/=.*//' $(ENVFILE))
-endif
-
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -17,29 +10,37 @@ GO111MODULE=on
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
-# Docker parameters
-EXECUTABLE=dosync
-NAMESPACE=localrivet
-DOCKER=docker
-DOCKER_BUILD=$(DOCKER) build
-REGISTRY=registry.digitalocean.com
-REGISTRY_REPO=${NAMESPACE}/${EXECUTABLE}
-TAG=latest
-REGISTRY_URL=$(REGISTRY)/$(REGISTRY_REPO)
-$(eval COMMIT_HASH := $(shell git rev-parse --short HEAD))
-TIMESTAMP ?= $(shell date +"%Y%m%d%H%M%S")
-	VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
-LDFLAGS ?= -X 'main.Version=$(VERSION)'
-
+# Binary and versioning
 BINARY_NAME=dosync
-VERSION?=0.1.0
+VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
 LDFLAGS=-ldflags "-X main.Version=${VERSION}"
 BUILD_DIR=release
 
 # Docker Hub parameters
+DOCKER=docker
 IMAGE_NAME=localrivet/dosync
 TAG ?= latest
-VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
+
+.PHONY: help
+help:
+	@echo "\nAvailable make targets:"
+	@echo "  help           Show this help message"
+	@echo "  build          Build for current platform (default Go env)"
+	@echo "  build-linux    Build for Linux (amd64)"
+	@echo "  build-darwin-arm64  Build for macOS (arm64)"
+	@echo "  build-darwin-amd64  Build for macOS (amd64)"
+	@echo "  build-all      Build for all major platforms (Linux/macOS)"
+	@echo "  install        Install the binary to /usr/local/bin"
+	@echo "  clean          Remove build artifacts"
+	@echo "  run-dev        Build and run in development mode"
+	@echo "  test           Run Go tests"
+	@echo "  fmt            Run go fmt on source files"
+	@echo "  run            Build and run the binary for the current platform"
+	@echo "  docker-build   Build Docker image for Docker Hub (single platform)"
+	@echo "  docker-tag     Tag Docker image with current version"
+	@echo "  docker-push    Push Docker image (latest and version) to Docker Hub"
+	@echo "  docker-buildx  Build and push multi-platform Docker image to Docker Hub (recommended)"
+	@echo ""
 
 .PHONY: all clean build build-linux build-darwin build-all
 
@@ -47,29 +48,29 @@ all: clean build-all
 
 build:
 	@echo "Building for current platform..."
-	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)/$(shell go env GOARCH)
-	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)/$(shell go env GOARCH)/$(BINARY_NAME) .
+	@mkdir -p $(BUILD_DIR)/$(GOOS)/$(GOARCH)
+	@$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(GOOS)/$(GOARCH)/$(BINARY_NAME) .
 
 build-linux:
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(BUILD_DIR)/linux/amd64
-	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/linux/amd64/$(BINARY_NAME) .
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/amd64/$(BINARY_NAME) .
 
 build-darwin-arm64:
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(BUILD_DIR)/darwin/arm64
-	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/darwin/arm64/$(BINARY_NAME) .
+	@GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/darwin/arm64/$(BINARY_NAME) .
 
 build-darwin-amd64:
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(BUILD_DIR)/darwin/amd64
-	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/darwin/amd64/$(BINARY_NAME) .
+	@GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/darwin/amd64/$(BINARY_NAME) .
 
 build-all: build-linux build-darwin-arm64 build-darwin-amd64
 
 install: build
 	@echo "Installing to /usr/local/bin/$(BINARY_NAME)..."
-	@sudo cp $(BUILD_DIR)/$(shell go env GOOS)/$(shell go env GOARCH)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	@sudo cp $(BUILD_DIR)/$(GOOS)/$(GOARCH)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
 	@sudo chmod +x /usr/local/bin/$(BINARY_NAME)
 	@echo "Installation complete."
 
@@ -80,7 +81,7 @@ clean:
 # Helper for development testing
 run-dev: build
 	@echo "Running in development mode..."
-	@./$(BUILD_DIR)/$(shell go env GOOS)/$(shell go env GOARCH)/$(BINARY_NAME) sync -f docker-compose.yml -i 30s --verbose
+	@./$(BUILD_DIR)/$(GOOS)/$(GOARCH)/$(BINARY_NAME) sync -f docker-compose.yml -i 30s --verbose
 
 .PHONY: test
 test:
@@ -93,9 +94,9 @@ fmt:
 
 .PHONY: run
 run:
-	rm -f ./release/${GOOS}/$(GOARCH)/$(EXECUTABLE)
+	rm -f ./release/${GOOS}/$(GOARCH)/$(BINARY_NAME)
 	make build
-	./release/${GOOS}/$(GOARCH)/$(EXECUTABLE)
+	./release/${GOOS}/$(GOARCH)/$(BINARY_NAME)
 
 .PHONY: docker-build
 # Build the Docker image for Docker Hub
@@ -112,3 +113,11 @@ docker-tag:
 docker-push:
 	$(DOCKER) push $(IMAGE_NAME):$(TAG)
 	$(DOCKER) push $(IMAGE_NAME):$(VERSION)
+
+.PHONY: docker-buildx
+# Build and push multi-platform images to Docker Hub (Alpine-based)
+docker-buildx:
+	$(DOCKER) buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+		-t $(IMAGE_NAME):$(TAG) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		--push .
