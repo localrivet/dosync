@@ -42,6 +42,8 @@ help:
 	@echo "  docker-buildx  Build and push multi-platform Docker image to Docker Hub (recommended)"
 	@echo "  release        Commit, tag, push, and build/push multi-platform Docker images for a new version"
 	@echo "  release-assets Build all binaries and create a GitHub release with attached assets (requires gh CLI)"
+	@echo "  build-linux-arm64   Build for Linux (arm64)"
+	@echo "  build-linux-armv7   Build for Linux (arm/v7)"
 	@echo ""
 
 .PHONY: all clean build build-linux build-darwin build-all
@@ -68,7 +70,17 @@ build-darwin-amd64:
 	@mkdir -p $(BUILD_DIR)/darwin/amd64
 	@GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/darwin/amd64/$(BINARY_NAME) .
 
-build-all: build-linux build-darwin-arm64 build-darwin-amd64
+build-linux-arm64:
+	@echo "Building for Linux (arm64)..."
+	@mkdir -p $(BUILD_DIR)/linux/arm64
+	@GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/arm64/$(BINARY_NAME) .
+
+build-linux-armv7:
+	@echo "Building for Linux (arm/v7)..."
+	@mkdir -p $(BUILD_DIR)/linux/armv7
+	@GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/armv7/$(BINARY_NAME) .
+
+build-all: build-linux build-linux-arm64 build-linux-armv7 build-darwin-arm64 build-darwin-amd64
 
 install: build
 	@echo "Installing to /usr/local/bin/$(BINARY_NAME)..."
@@ -141,6 +153,7 @@ release-assets: build-all
 	gh release create $${VERSION} \
 	  release/linux/amd64/dosync#dosync-linux-amd64 \
 	  release/linux/arm64/dosync#dosync-linux-arm64 \
+	  release/linux/armv7/dosync#dosync-linux-armv7 \
 	  release/darwin/amd64/dosync#dosync-darwin-amd64 \
 	  release/darwin/arm64/dosync#dosync-darwin-arm64 \
 	  --title "$${VERSION}" --notes "Release $${VERSION}"
