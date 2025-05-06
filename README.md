@@ -1,5 +1,8 @@
 # DOSync
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/localrivet/dosync.svg)](https://pkg.go.dev/github.com/localrivet/dosync)
+[![Go Report Card](https://goreportcard.com/badge/github.com/localrivet/dosync)](https://goreportcard.com/report/github.com/localrivet/dosync)
+
 **DOSync** is a tool that synchronizes Docker Compose services with the latest images from any supported container registry. It automates the process of checking for new image tags, updating your Docker Compose file, and restarting the relevant services to ensure your deployments are always running the latest versions.
 
 ## Features
