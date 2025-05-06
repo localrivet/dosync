@@ -40,6 +40,8 @@ help:
 	@echo "  docker-tag     Tag Docker image with current version"
 	@echo "  docker-push    Push Docker image (latest and version) to Docker Hub"
 	@echo "  docker-buildx  Build and push multi-platform Docker image to Docker Hub (recommended)"
+	@echo "  release        Commit, tag, push, and build/push multi-platform Docker images for a new version"
+	@echo "  release-assets Build all binaries and create a GitHub release with attached assets (requires gh CLI)"
 	@echo ""
 
 .PHONY: all clean build build-linux build-darwin build-all
@@ -121,3 +123,24 @@ docker-buildx:
 		-t $(IMAGE_NAME):$(TAG) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push .
+
+.PHONY: release
+release:
+	@read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	git add .; \
+	git commit -m "Release $${VERSION}"; \
+	git tag $${VERSION}; \
+	git push origin $${VERSION}; \
+	git push; \
+	$(MAKE) docker-buildx VERSION=$${VERSION}; \
+	$(MAKE) release-assets VERSION=$${VERSION}
+
+.PHONY: release-assets
+release-assets: build-all
+	@read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	gh release create $${VERSION} \
+	  release/linux/amd64/dosync#dosync-linux-amd64 \
+	  release/linux/arm64/dosync#dosync-linux-arm64 \
+	  release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	  release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	  --title "$${VERSION}" --notes "Release $${VERSION}"
