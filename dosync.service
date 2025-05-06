@@ -1,0 +1,25 @@
+[Unit]
+Description=DOSync - DigitalOcean Container Registry Synchronization Service
+After=docker.service network-online.target
+Requires=docker.service network-online.target
+Documentation=https://github.com/localrivet/dosync
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=DO_TOKEN=your_digitalocean_token_here
+ExecStart=/usr/local/bin/dosync sync -f /opt/proxy-tunnel/docker-compose.yml -i 1m --verbose
+Restart=always
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/opt/proxy-tunnel
+
+[Install]
+WantedBy=multi-user.target 

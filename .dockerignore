@@ -1,0 +1,18 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+release/
+*.exe
+*.out
+
+# Environment files
+.env
+env/
+
+# Misc
+backups/
+vendor/
+.DS_Store
+*.log

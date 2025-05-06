@@ -1,0 +1,71 @@
+services:
+  # Sample web app
+  webapp:
+    image: registry.digitalocean.com/your-registry/webapp:latest
+    restart: always
+    ports:
+      - "80:8080"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - app_network
+
+  # Sample API service
+  api:
+    image: registry.digitalocean.com/your-registry/api:latest
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/dbname
+    networks:
+      - app_network
+      - db_network
+    depends_on:
+      - db
+
+  # Sample database
+  db:
+    image: postgres:14-alpine
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=dbname
+    networks:
+      - db_network
+
+  # Self-updating DOSync service
+  # This container will check for updates to other services and update the docker-compose file
+  dosync:
+    container_name: dosync
+    image: localrivet/dosync:latest
+    # Or build from local source:
+    # build: .
+    restart: unless-stopped
+    volumes:
+      # Mount the Docker socket to allow controlling the Docker daemon
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the actual docker-compose.yml file that's being used to run the stack
+      - ./docker-compose.yml:/app/docker-compose.yml
+      # Mount a directory for backups
+      - ./backups:/app/backups
+    environment:
+      # Your DigitalOcean API token
+      - DO_TOKEN=${DO_TOKEN}
+      # Interval between checks (default: 1 minute)
+      - CHECK_INTERVAL=1m
+      # Enable verbose logging
+      - VERBOSE=--verbose
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    name: app_network
+  db_network:
+    name: db_network
+    internal: true
+
+volumes:
+  db_data:

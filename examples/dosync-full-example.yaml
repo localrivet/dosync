@@ -1,0 +1,156 @@
+# DOSync Full Configuration Example
+# This file demonstrates all supported registry types and image policy options
+
+# Global settings
+checkInterval: "5m" # Check for updates every 5 minutes
+verbose: true # Enable verbose logging
+
+# Registry configurations
+registry:
+  # Docker Hub configuration
+  dockerhub:
+    # Authentication for private repositories (optional)
+    username: "my-dockerhub-username"
+    password: "my-dockerhub-password"
+    # Image policy for semver tags (e.g., v1.2.3)
+    imagePolicy:
+      filterTags:
+        pattern: "v(\\d+\\.\\d+\\.\\d+)" # Match tags like v1.2.3
+        extract: "$1" # Extract 1.2.3 part
+      policy:
+        semver: {} # Use semantic versioning (highest version wins)
+
+  # GitHub Container Registry
+  ghcr:
+    token: "github_pat_..." # GitHub Personal Access Token with read:packages scope
+    imagePolicy:
+      filterTags:
+        pattern: "v(\\d+\\.\\d+\\.\\d+)"
+      policy:
+        semver:
+          range: ">=2.0.0 <3.0.0" # Only use versions between 2.0.0 and 3.0.0
+
+  # DigitalOcean Container Registry
+  docr:
+    token: "dop_v1_..." # DigitalOcean API token
+    imagePolicy:
+      filterTags:
+        pattern: "main-(\\d+)" # Match tags like main-20230915123456
+        extract: "$1" # Extract timestamp/build number
+      policy:
+        numerical:
+          order: "desc" # Use highest number (most recent)
+
+  # Google Container Registry
+  gcr:
+    credentialsFile: "/path/to/credentials.json"
+    imagePolicy:
+      filterTags:
+        pattern: "(\\d{8})" # Match 8-digit date tags like 20230915
+      policy:
+        numerical:
+          order: "desc" # Use highest number (most recent date)
+
+  # Azure Container Registry
+  acr:
+    registry: "myregistry.azurecr.io"
+    clientID: "azure-client-id"
+    clientSecret: "azure-client-secret"
+    imagePolicy:
+      filterTags:
+        pattern: "release-(\\d+)" # Match tags like release-123
+        extract: "$1"
+      policy:
+        numerical:
+          order: "desc" # Highest build number
+
+  # Amazon Elastic Container Registry
+  ecr:
+    registry: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+    awsAccessKeyID: "AKIA..."
+    awsSecretAccessKey: "your-aws-secret"
+    region: "us-east-1"
+    imagePolicy:
+      filterTags:
+        pattern: "main-([a-f0-9]+)-(\\d+)" # Match tags like main-abc123-456
+        extract: "$2" # Extract the numeric part
+      policy:
+        numerical:
+          order: "desc" # Use highest build number
+
+  # Harbor Registry
+  harbor:
+    url: "https://harbor.example.com"
+    username: "harbor-user"
+    password: "harbor-password"
+    imagePolicy:
+      filterTags:
+        pattern: "([0-9]{4}-[0-9]{2}-[0-9]{2})" # Match date tags like 2023-09-15
+      policy:
+        alphabetical: # Sort alphabetically (works for ISO dates)
+          order: "desc" # Most recent date
+
+  # Quay.io Registry
+  quay:
+    token: "quay-token"
+    imagePolicy:
+      filterTags:
+        pattern: "stable-(\\d+)" # Match tags like stable-456
+        extract: "$1"
+      policy:
+        numerical:
+          order: "desc" # Highest build number
+
+  # Custom Registry
+  custom:
+    url: "https://registry.example.com"
+    username: "registry-user"
+    password: "registry-password"
+    imagePolicy:
+      # You can apply complex regex patterns with multiple capture groups
+      filterTags:
+        pattern: "proj-(\\w+)-(\\d+)-(\\d+)" # Match tags like proj-feature-123-456
+        extract: "$3" # Extract the last number
+      policy:
+        numerical:
+          order: "desc" # Use highest build number
+
+# Advanced image policy examples
+
+# Example 1: Using regex to extract and filter by specific branch/environment
+advanced_example_1:
+  imagePolicy:
+    filterTags:
+      pattern: "(dev|staging|prod)-v(\\d+\\.\\d+\\.\\d+)" # Match tags like dev-v1.2.3
+      extract: "$2" # Extract semver part
+    policy:
+      semver: {}
+
+# Example 2: Using timestamp-based tags (typically from CI/CD systems)
+advanced_example_2:
+  imagePolicy:
+    filterTags:
+      pattern: "main-(\\d{14})" # Match tags like main-20230915123456 (YYYYMMDDhhmmss)
+      extract: "$1"
+    policy:
+      numerical:
+        order: "desc" # Most recent timestamp
+
+# Example 3: Using git commit SHA with build number
+advanced_example_3:
+  imagePolicy:
+    filterTags:
+      pattern: "[^-]+-([a-f0-9]{7,})-(\\d+)" # Match tags with commit SHA and build number
+      extract: "$2" # Extract build number
+    policy:
+      numerical:
+        order: "desc" # Highest build number
+
+# Example 4: Filtering by specific feature branch
+advanced_example_4:
+  imagePolicy:
+    filterTags:
+      pattern: "feature-login-.*" # Match all tags for the login feature branch
+    policy:
+      alphabetical:
+        order: "desc" # Use lexicographically highest tag

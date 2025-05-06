@@ -1,0 +1,111 @@
+version: "3"
+
+services:
+  # DockerHub service with numerical policy (latest by timestamp)
+  web:
+    image: nginx:latest
+    scale: 3
+    ports:
+      - 8080:80
+    volumes:
+      - ./web:/usr/share/nginx/html
+    networks:
+      - frontend
+
+  # GHCR service with semver policy (latest 1.x)
+  api:
+    image: ghcr.io/myorg/myapi:v1.2.3
+    deploy:
+      replicas: 2
+    ports:
+      - 3000:3000
+    volumes:
+      - ./api:/app
+    working_dir: /app
+    command: npm start
+    networks:
+      - frontend
+      - backend
+
+  # Digital Ocean service with numerical policy (timestamps)
+  backend:
+    image: registry.digitalocean.com/myregistry/backend:main-abc123-1718435261
+    environment:
+      - DATABASE_URL=postgres://user:pass@database-blue:5432/db
+    networks:
+      - backend
+
+  # GCR service with semver policy (includes pre-releases)
+  auth-service:
+    image: gcr.io/myproject/auth:v2.0.0-rc1
+    environment:
+      - JWT_SECRET=supersecret
+    networks:
+      - backend
+
+  # ECR service with semver extraction
+  worker:
+    image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/worker:1.0.0-alpine3.17
+    networks:
+      - backend
+
+  # Quay service with alphabetical policy (date-based releases)
+  storage:
+    image: quay.io/myorg/storage:RELEASE.2023-01-31T08-42-01Z
+    volumes:
+      - data:/data
+    networks:
+      - backend
+
+  # Name-based replicas (blue-green deployment pattern)
+  database-blue:
+    image: postgres:14.5
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_USER: admin
+    networks:
+      - backend
+
+  database-green:
+    image: postgres:14.5
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_USER: admin
+    networks:
+      - backend
+
+  # Cache services using Redis with tag extraction
+  cache-1:
+    image: redis:7.0.5-alpine3.16
+    networks:
+      - backend
+
+  cache-2:
+    image: redis:7.0.5-alpine3.16
+    networks:
+      - backend
+
+  # Self-updating DOSync service
+  dosync:
+    image: localrivet/dosync:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/app/docker-compose.yml
+      - ./dosync.yaml:/app/dosync.yaml
+      - ./backups:/app/backups
+    environment:
+      - CHECK_INTERVAL=1m
+      - VERBOSE=--verbose
+      # Add any registry credentials as needed
+      - DO_TOKEN=${DO_TOKEN}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  data:

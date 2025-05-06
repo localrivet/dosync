@@ -1,0 +1,37 @@
+{{define "history_rows"}}
+{{range .Records}}
+<tr>
+    <td class="px-4 py-2">{{.ServiceName}}</td>
+    <td class="px-4 py-2">{{.Version}}</td>
+    <td class="px-4 py-2">{{.StartTime.Format "2006-01-02 15:04:05"}}</td>
+    <td class="px-4 py-2">{{if .EndTime.IsZero}}--{{else}}{{.EndTime.Format "2006-01-02 15:04:05"}}{{end}}</td>
+    <td class="px-4 py-2">{{if .Success}}✅{{else}}❌{{if .FailureReason}} <span title="{{.FailureReason}}"
+            class="inline-block align-middle text-yellow-600 cursor-help">⚠️</span>{{end}}{{end}}</td>
+    <td class="px-4 py-2">{{.DurationStr}}</td>
+    <td class="px-4 py-2">{{if .Rollback}}🔄{{end}}</td>
+</tr>
+{{else}}
+<tr>
+    <td class="px-4 py-8 text-center text-gray-400" colspan="7">
+        <div class="flex flex-col items-center gap-2">
+            <span class="text-3xl">📭</span>
+            <span class="font-semibold">No deployment records found.</span>
+            <span class="text-sm">Try adjusting your filters or check back later.</span>
+        </div>
+    </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+<div class="flex justify-between items-center mt-2">
+    <button class="px-4 py-2 bg-gray-200 rounded disabled:opacity-50" hx-get="/api/history?page={{sub .Page 1}}"
+        hx-target="#history-table" hx-include="#filter-form" {{if not .HasPrev}}disabled{{end}}>
+        Prev
+    </button>
+    <span>Page {{.Page}}{{if gt .Total 0}} of {{divCeil .Total 50}}{{end}}</span>
+    <button class="px-4 py-2 bg-gray-200 rounded disabled:opacity-50" hx-get="/api/history?page={{add .Page 1}}"
+        hx-target="#history-table" hx-include="#filter-form" {{if not .HasNext}}disabled{{end}}>
+        Next
+    </button>
+</div>
+{{end}}

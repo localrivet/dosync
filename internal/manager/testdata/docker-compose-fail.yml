@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  test-service-fail:
+    image: nginx:1.21.0
+    container_name: test-service-fail
+    ports:
+      - "47083:80"
+    environment:
+      - SERVICE_VERSION=1.0.0
+      # This value will be used to simulate a failing update
+      - SHOULD_FAIL_ON_UPDATE=false
+    healthcheck:
+      # This is a health check that will fail if SHOULD_FAIL_ON_UPDATE is set to true
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'if [ "$$SHOULD_FAIL_ON_UPDATE" = "true" ]; then exit 1; else curl -f http://localhost:80 || exit 1; fi',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
+    deploy:
+      replicas: 1

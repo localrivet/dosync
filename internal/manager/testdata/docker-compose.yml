@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  test-service:
+    image: nginx:1.21.0
+    ports:
+      - "47081:80"
+    environment:
+      - SERVICE_VERSION=1.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      replicas: 1
+
+  test-service-with-deps:
+    image: nginx:1.21.0
+    ports:
+      - "47082:80"
+    environment:
+      - SERVICE_VERSION=1.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      - test-service
+    deploy:
+      replicas: 1

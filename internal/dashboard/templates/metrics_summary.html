@@ -1,0 +1,22 @@
+{{define "metrics_summary"}}
+<div id="metrics-summary" class="mb-6">
+    <div class="flex gap-6">
+        <div class="bg-white rounded shadow p-4 flex-1">
+            <div class="text-sm text-gray-500">Deployments</div>
+            <div class="text-2xl font-bold">{{.Deployments}}</div>
+        </div>
+        <div class="bg-white rounded shadow p-4 flex-1">
+            <div class="text-sm text-gray-500">Success Rate</div>
+            <div class="text-2xl font-bold">{{printf "%.0f%%" (mul .SuccessRate 100)}}</div>
+        </div>
+        <div class="bg-white rounded shadow p-4 flex-1">
+            <div class="text-sm text-gray-500">Avg Time</div>
+            <div class="text-2xl font-bold">{{.AvgTime}}</div>
+        </div>
+        <div class="bg-white rounded shadow p-4 flex-1">
+            <div class="text-sm text-gray-500">Rollbacks</div>
+            <div class="text-2xl font-bold">{{.Rollbacks}}</div>
+        </div>
+    </div>
+</div>
+{{end}}
