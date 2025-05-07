@@ -37,6 +37,11 @@ This tool periodically checks for new image tags in the configured registries, u
 according to your image policy preferences, and restarts the relevant Docker services to ensure that your deployments 
 are always running the latest image versions.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Allow env file path to be set via ENV_FILE env var if not provided by flag
+		if envFilePath == "" {
+			envFilePath = os.Getenv("ENV_FILE")
+		}
+
 		if envFilePath != "" {
 			// Load the specified .env file
 			err := godotenv.Load(envFilePath)
@@ -44,6 +49,11 @@ are always running the latest image versions.`,
 				fmt.Printf("Error loading .env file from '%s'\n", envFilePath)
 				return err
 			}
+		}
+
+		// Allow config path to be set via CONFIG_PATH env var if not provided by flag
+		if configPath == "" {
+			configPath = os.Getenv("CONFIG_PATH")
 		}
 
 		// Load unified config

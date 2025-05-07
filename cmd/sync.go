@@ -48,6 +48,52 @@ Image policies can be configured in dosync.yaml to:
 
 For full documentation on configuration options, see the README.md file.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Set sync flags from environment variables if not set by CLI
+		if !cmd.Flags().Changed("file") {
+			if v := os.Getenv("SYNC_FILE"); v != "" {
+				cmd.Flags().Set("file", v)
+			}
+		}
+		if !cmd.Flags().Changed("interval") {
+			if v := os.Getenv("SYNC_INTERVAL"); v != "" {
+				cmd.Flags().Set("interval", v)
+			}
+		}
+		if !cmd.Flags().Changed("verbose") {
+			if v := os.Getenv("SYNC_VERBOSE"); v != "" {
+				cmd.Flags().Set("verbose", v)
+			}
+		}
+		if !cmd.Flags().Changed("rolling-update") {
+			if v := os.Getenv("SYNC_ROLLING_UPDATE"); v != "" {
+				cmd.Flags().Set("rolling-update", v)
+			}
+		}
+		if !cmd.Flags().Changed("strategy") {
+			if v := os.Getenv("SYNC_STRATEGY"); v != "" {
+				cmd.Flags().Set("strategy", v)
+			}
+		}
+		if !cmd.Flags().Changed("health-check") {
+			if v := os.Getenv("SYNC_HEALTH_CHECK"); v != "" {
+				cmd.Flags().Set("health-check", v)
+			}
+		}
+		if !cmd.Flags().Changed("health-endpoint") {
+			if v := os.Getenv("SYNC_HEALTH_ENDPOINT"); v != "" {
+				cmd.Flags().Set("health-endpoint", v)
+			}
+		}
+		if !cmd.Flags().Changed("delay") {
+			if v := os.Getenv("SYNC_DELAY"); v != "" {
+				cmd.Flags().Set("delay", v)
+			}
+		}
+		if !cmd.Flags().Changed("rollback-on-failure") {
+			if v := os.Getenv("SYNC_ROLLBACK_ON_FAILURE"); v != "" {
+				cmd.Flags().Set("rollback-on-failure", v)
+			}
+		}
 
 		intervalStr := AppConfig.CheckInterval
 		verbose = AppConfig.Verbose
