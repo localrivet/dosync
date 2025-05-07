@@ -171,6 +171,7 @@ release: update-changelog
 	  else \
 	    VERSION="$(VERSION)"; \
 	  fi; \
+	  export VERSION="$$VERSION"; \
 	  echo "🚀 Creating release $$VERSION..."; \
 	  echo "-> Adding all changes to git..."; \
 	  git add .; \
