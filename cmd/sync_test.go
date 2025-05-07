@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,4 +142,43 @@ func TestHandleRollingUpdateStub(t *testing.T) {
 	if want := "[Rolling Update] Stub: would perform rolling update on test-compose.yml"; !bytes.Contains([]byte(output), []byte(want)) {
 		t.Errorf("expected output to contain %q, got %q", want, output)
 	}
+}
+
+func TestSyncCmdEnvVarInvalidBool(t *testing.T) {
+	// Save and restore original environment
+	orig := os.Getenv("SYNC_VERBOSE")
+	defer os.Setenv("SYNC_VERBOSE", orig)
+
+	os.Setenv("SYNC_VERBOSE", "--verbose")
+
+	// Prepare command to run the sync command in a subprocess
+	cmd := exec.Command(os.Args[0], "-test.run=TestSyncCmdEnvVarInvalidBoolHelper")
+	cmd.Env = append(os.Environ(), "SYNC_VERBOSE=--verbose")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() != 2 {
+			t.Fatalf("expected exit code 2, got %d", exitErr.ExitCode())
+		}
+		if !strings.Contains(stderr.String(), "Invalid value for SYNC_VERBOSE") {
+			t.Fatalf("expected error message about invalid SYNC_VERBOSE, got: %s", stderr.String())
+		}
+	} else if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else {
+		t.Fatalf("expected process to exit with error, but it did not")
+	}
+}
+
+// This helper is only run as a subprocess by the above test
+func TestSyncCmdEnvVarInvalidBoolHelper(t *testing.T) {
+	if os.Getenv("SYNC_VERBOSE") != "--verbose" {
+		t.Skip("not running subprocess test")
+	}
+	// Set up minimal AppConfig to avoid nil pointer
+	AppConfig = &config.Config{CheckInterval: "1m", Verbose: false}
+	// Run the sync command, which should exit with code 2 due to invalid SYNC_VERBOSE
+	syncCmd.Run(syncCmd, []string{})
 }
