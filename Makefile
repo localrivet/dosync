@@ -52,6 +52,7 @@ help:
 	@echo "  build-linux-arm64   Build for Linux (arm64)"
 	@echo "  build-linux-armv7   Build for Linux (arm/v7)"
 	@echo "  release-upload-assets  Upload binaries to an existing GitHub release (use: make release-upload-assets VERSION=v1.0.0)"
+	@echo "  docker-release     Standalone Docker build and push for an existing release version"
 	@echo ""
 
 .PHONY: all clean build build-linux build-darwin build-all
@@ -163,7 +164,7 @@ update-changelog:
 	'
 
 .PHONY: release
-# Simplified release process - tag, build, and create GitHub release with assets
+# Complete release process - tag, build binaries, build Docker images, create GitHub release with assets
 release: update-changelog
 	@sh -c '\
 	  if [ -z "$(VERSION)" ]; then \
@@ -195,6 +196,9 @@ release: update-changelog
 	  git push || echo "   Failed to push commits, continuing..."; \
 	  echo "-> Waiting for GitHub to register the tag..."; \
 	  sleep 3; \
+	  echo "📦 Building and pushing Docker images..."; \
+	  echo "-> Building multi-platform Docker images and pushing to Docker Hub..."; \
+	  $(MAKE) docker-buildx VERSION="$$VERSION" || echo "   Docker build/push failed, continuing..."; \
 	  echo "📦 Building platform binaries..."; \
 	  $(MAKE) build-all VERSION="$$VERSION"; \
 	  echo "📦 Creating GitHub release..."; \
@@ -307,4 +311,20 @@ release-upload-assets: update-changelog
 	    exit 1; \
 	  fi; \
 	  echo "✅ Successfully uploaded all assets to GitHub release $$VERSION!"; \
+	'
+
+.PHONY: docker-release
+# Standalone Docker build and push for an existing release version
+docker-release:
+	@sh -c '\
+	  if [ -z "$(VERSION)" ]; then \
+	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	  else \
+	    VERSION="$(VERSION)"; \
+	  fi; \
+	  export VERSION="$$VERSION"; \
+	  echo "🚀 Building and pushing Docker images for $$VERSION..."; \
+	  echo "-> Building multi-platform Docker images and pushing to Docker Hub..."; \
+	  $(MAKE) docker-buildx VERSION="$$VERSION" || (echo "FATAL: Docker build/push failed" && exit 1); \
+	  echo "✅ Docker images for $$VERSION successfully built and pushed!"; \
 	'
