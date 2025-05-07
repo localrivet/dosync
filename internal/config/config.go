@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sync"
 
@@ -292,6 +293,48 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 		var c Config
 		if err := v.Unmarshal(&c); err != nil {
 			panic(fmt.Errorf("failed to unmarshal config: %w", err))
+		}
+
+		// Expand environment variables in registry credentials
+		if c.Registry != nil {
+			if c.Registry.DockerHub != nil {
+				c.Registry.DockerHub.Username = os.ExpandEnv(c.Registry.DockerHub.Username)
+				c.Registry.DockerHub.Password = os.ExpandEnv(c.Registry.DockerHub.Password)
+			}
+			if c.Registry.GCR != nil {
+				c.Registry.GCR.CredentialsFile = os.ExpandEnv(c.Registry.GCR.CredentialsFile)
+			}
+			if c.Registry.GHCR != nil {
+				c.Registry.GHCR.Token = os.ExpandEnv(c.Registry.GHCR.Token)
+			}
+			if c.Registry.ACR != nil {
+				c.Registry.ACR.TenantID = os.ExpandEnv(c.Registry.ACR.TenantID)
+				c.Registry.ACR.ClientID = os.ExpandEnv(c.Registry.ACR.ClientID)
+				c.Registry.ACR.ClientSecret = os.ExpandEnv(c.Registry.ACR.ClientSecret)
+				c.Registry.ACR.Registry = os.ExpandEnv(c.Registry.ACR.Registry)
+			}
+			if c.Registry.Quay != nil {
+				c.Registry.Quay.Token = os.ExpandEnv(c.Registry.Quay.Token)
+			}
+			if c.Registry.Harbor != nil {
+				c.Registry.Harbor.URL = os.ExpandEnv(c.Registry.Harbor.URL)
+				c.Registry.Harbor.Username = os.ExpandEnv(c.Registry.Harbor.Username)
+				c.Registry.Harbor.Password = os.ExpandEnv(c.Registry.Harbor.Password)
+			}
+			if c.Registry.DOCR != nil {
+				c.Registry.DOCR.Token = os.ExpandEnv(c.Registry.DOCR.Token)
+			}
+			if c.Registry.ECR != nil {
+				c.Registry.ECR.AWSAccessKeyID = os.ExpandEnv(c.Registry.ECR.AWSAccessKeyID)
+				c.Registry.ECR.AWSSecretAccessKey = os.ExpandEnv(c.Registry.ECR.AWSSecretAccessKey)
+				c.Registry.ECR.Region = os.ExpandEnv(c.Registry.ECR.Region)
+				c.Registry.ECR.Registry = os.ExpandEnv(c.Registry.ECR.Registry)
+			}
+			if c.Registry.Custom != nil {
+				c.Registry.Custom.URL = os.ExpandEnv(c.Registry.Custom.URL)
+				c.Registry.Custom.Username = os.ExpandEnv(c.Registry.Custom.Username)
+				c.Registry.Custom.Password = os.ExpandEnv(c.Registry.Custom.Password)
+			}
 		}
 
 		cfg = &c
