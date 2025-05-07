@@ -1,7 +1,17 @@
-# DOSync
+<p align="center">
+  <img src="https://raw.githubusercontent.com/localrivet/dosync/main/docs/logo1200X630.png" alt="DOSync" width="600">
+</p>
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/localrivet/dosync.svg)](https://pkg.go.dev/github.com/localrivet/dosync)
-[![Go Report Card](https://goreportcard.com/badge/github.com/localrivet/dosync)](https://goreportcard.com/report/github.com/localrivet/dosync)
+<h1 align="center">DOSync</h1>
+
+<p align="center">
+  <a href="https://github.com/localrivet/dosync/releases/latest"><img src="https://img.shields.io/github/v/release/localrivet/dosync" alt="Latest Release"></a>
+  <a href="https://goreportcard.com/report/github.com/localrivet/dosync"><img src="https://goreportcard.com/badge/github.com/localrivet/dosync" alt="Go Report Card"></a>
+  <a href="https://github.com/localrivet/dosync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/localrivet/dosync" alt="License"></a>
+  <a href="https://github.com/localrivet/dosync/stargazers"><img src="https://img.shields.io/github/stars/localrivet/dosync" alt="GitHub Stars"></a>
+  <a href="https://hub.docker.com/r/localrivet/dosync"><img src="https://img.shields.io/docker/pulls/localrivet/dosync" alt="Docker Pulls"></a>
+  <a href="https://github.com/localrivet/dosync/issues"><img src="https://img.shields.io/github/issues/localrivet/dosync" alt="GitHub Issues"></a>
+</p>
 
 **DOSync** is a tool that synchronizes Docker Compose services with the latest images from any supported container registry. It automates the process of checking for new image tags, updating your Docker Compose file, and restarting the relevant services to ensure your deployments are always running the latest versions.
 
