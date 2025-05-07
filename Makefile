@@ -18,7 +18,6 @@ GOARCH ?= $(shell go env GOARCH)
 
 # Binary and versioning
 BINARY_NAME=dosync
-VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
 LDFLAGS=-ldflags "-X main.Version=${VERSION} -s -w" -trimpath
 BUILD_DIR=release
 
@@ -48,10 +47,11 @@ help:
 	@echo "  docker-tag     Tag Docker image with current version"
 	@echo "  docker-push    Push Docker image (latest and version) to Docker Hub"
 	@echo "  docker-buildx  Build and push multi-platform Docker image to Docker Hub (recommended)"
-	@echo "  release        Commit, tag, push, and build/push multi-platform Docker images for a new version"
+	@echo "  release        Commit, tag, push, and build/push multi-platform Docker images for a new version (use: make release VERSION=v1.0.0)"
 	@echo "  release-assets Build all binaries and create a GitHub release with attached assets (requires gh CLI)"
 	@echo "  build-linux-arm64   Build for Linux (arm64)"
 	@echo "  build-linux-armv7   Build for Linux (arm/v7)"
+	@echo "  release-upload-assets  Upload binaries to an existing GitHub release (use: make release-upload-assets VERSION=v1.0.0)"
 	@echo ""
 
 .PHONY: all clean build build-linux build-darwin build-all
@@ -146,7 +146,9 @@ docker-buildx:
 
 .PHONY: release
 release:
-	@read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	@if [ -z "$(VERSION)" ]; then \
+	  read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	fi; \
 	git add .; \
 	git commit -m "Release $${VERSION}"; \
 	git tag $${VERSION}; \
@@ -156,12 +158,39 @@ release:
 	$(MAKE) release-assets VERSION=$${VERSION}
 
 .PHONY: release-assets
-release-assets: build-all
-	@read -p "Enter release version (e.g., v1.0.0): " VERSION; \
-	gh release create $${VERSION} \
-	  release/linux/amd64/dosync#dosync-linux-amd64 \
-	  release/linux/arm64/dosync#dosync-linux-arm64 \
-	  release/linux/armv7/dosync#dosync-linux-armv7 \
-	  release/darwin/amd64/dosync#dosync-darwin-amd64 \
-	  release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	  --title "$${VERSION}" --notes "Release $${VERSION}"
+release-assets:
+	@sh -c '\
+		if [ -z "$(VERSION)" ]; then \
+			read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+		else \
+			VERSION="$(VERSION)"; \
+		fi; \
+		export VERSION="$$VERSION"; \
+		$(MAKE) build-all VERSION="$$VERSION"; \
+		gh release create "$$VERSION" \
+			release/linux/amd64/dosync#dosync-linux-amd64 \
+			release/linux/arm64/dosync#dosync-linux-arm64 \
+			release/linux/armv7/dosync#dosync-linux-armv7 \
+			release/darwin/amd64/dosync#dosync-darwin-amd64 \
+			release/darwin/arm64/dosync#dosync-darwin-arm64 \
+			--title "$$VERSION" --notes "Release $$VERSION" \
+	'
+
+.PHONY: release-upload-assets
+release-upload-assets:
+	@sh -c '\
+	  if [ -z "$(VERSION)" ]; then \
+	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	  else \
+	    VERSION="$(VERSION)"; \
+	  fi; \
+	  export VERSION="$$VERSION"; \
+	  $(MAKE) build-all VERSION="$$VERSION"; \
+	  gh release upload "$$VERSION" \
+	    release/linux/amd64/dosync#dosync-linux-amd64 \
+	    release/linux/arm64/dosync#dosync-linux-arm64 \
+	    release/linux/armv7/dosync#dosync-linux-armv7 \
+	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	    --clobber \
+	'
