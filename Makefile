@@ -205,13 +205,23 @@ release: update-changelog
 	    RELEASE_NOTES="Release $$VERSION"; \
 	  fi; \
 	  echo "-> Creating new release $$VERSION with notes from CHANGELOG.md..."; \
-	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "$$RELEASE_NOTES" \
-	    release/linux/amd64/dosync#dosync-linux-amd64 \
-	    release/linux/arm64/dosync#dosync-linux-arm64 \
-	    release/linux/armv7/dosync#dosync-linux-armv7 \
-	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
-	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	    || (echo "FATAL: Failed to create GitHub release, aborting." && exit 1); \
+	  if ! gh release create "$$VERSION" --target main --title "$$VERSION" --notes "$$RELEASE_NOTES"; then \
+	    echo "FATAL: Failed to create GitHub release. Aborting."; \
+	    exit 1; \
+	  fi; \
+	  echo "-> Uploading assets to the release..."; \
+	  for PLATFORM in "linux/amd64" "linux/arm64" "linux/armv7" "darwin/amd64" "darwin/arm64"; do \
+	    BINARY_PATH="release/$${PLATFORM}/dosync"; \
+	    ASSET_NAME="dosync-$${PLATFORM//\//-}"; \
+	    if [ -f "$$BINARY_PATH" ]; then \
+	      echo "   Uploading $$ASSET_NAME..."; \
+	      if ! gh release upload "$$VERSION" "$$BINARY_PATH#$$ASSET_NAME" --clobber; then \
+	        echo "   Warning: Failed to upload $$ASSET_NAME, continuing..."; \
+	      fi; \
+	    else \
+	      echo "   Warning: Binary $$BINARY_PATH not found, skipping."; \
+	    fi; \
+	  done; \
 	  echo "✅ Release process completed!"; \
 	'
 
