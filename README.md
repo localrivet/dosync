@@ -2,8 +2,6 @@
   <img src="https://raw.githubusercontent.com/localrivet/dosync/main/docs/logo1200X630.png" alt="DOSync" width="600">
 </p>
 
-<h1 align="center">DOSync</h1>
-
 <p align="center">
   <a href="https://github.com/localrivet/dosync/releases/latest"><img src="https://img.shields.io/github/v/release/localrivet/dosync" alt="Latest Release"></a>
   <a href="https://goreportcard.com/report/github.com/localrivet/dosync"><img src="https://goreportcard.com/badge/github.com/localrivet/dosync" alt="Go Report Card"></a>
