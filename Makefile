@@ -184,16 +184,19 @@ release:
 	  echo "📦 Creating/updating GitHub release..."; \
 	  echo "-> Deleting release $$VERSION if it exists..."; \
 	  gh release delete "$$VERSION" --yes 2>/dev/null || true; \
-	  echo "-> Creating new release $$VERSION..."; \
-	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION" || (echo "FATAL: Failed to create GitHub release, aborting" && exit 1); \
-	  echo "-> Uploading binaries to release..."; \
-	  gh release upload "$$VERSION" \
-	    release/linux/amd64/dosync#dosync-linux-amd64 \
-	    release/linux/arm64/dosync#dosync-linux-arm64 \
-	    release/linux/armv7/dosync#dosync-linux-armv7 \
-	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
-	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	    --clobber || echo "   Failed to upload some assets, continuing..."; \
+	  echo "-> Creating new release $$VERSION (this may take a moment)..."; \
+	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION"; \
+	  echo "-> Release created successfully at: https://github.com/localrivet/dosync/releases/tag/$$VERSION"; \
+	  echo "-> Uploading linux/amd64 binary..."; \
+	  gh release upload "$$VERSION" release/linux/amd64/dosync#dosync-linux-amd64 --clobber; \
+	  echo "-> Uploading linux/arm64 binary..."; \
+	  gh release upload "$$VERSION" release/linux/arm64/dosync#dosync-linux-arm64 --clobber; \
+	  echo "-> Uploading linux/armv7 binary..."; \
+	  gh release upload "$$VERSION" release/linux/armv7/dosync#dosync-linux-armv7 --clobber; \
+	  echo "-> Uploading darwin/amd64 binary..."; \
+	  gh release upload "$$VERSION" release/darwin/amd64/dosync#dosync-darwin-amd64 --clobber; \
+	  echo "-> Uploading darwin/arm64 binary..."; \
+	  gh release upload "$$VERSION" release/darwin/arm64/dosync#dosync-darwin-arm64 --clobber; \
 	  echo "✅ Release process completed!"; \
 	'
 
