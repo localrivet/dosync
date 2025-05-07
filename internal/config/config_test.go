@@ -441,3 +441,27 @@ registry:
 		assert.NoError(t, ValidateConfig(&c))
 	})
 }
+
+func TestDOCRConfig_UsernamePasswordExpansion(t *testing.T) {
+	os.Setenv("DOCR_TOKEN", "testtoken123")
+	defer os.Unsetenv("DOCR_TOKEN")
+
+	yaml := `
+registry:
+  docr:
+    username: ${DOCR_TOKEN}
+    password: ${DOCR_TOKEN}
+`
+	v := viper.New()
+	v.SetConfigType("yaml")
+	err := v.ReadConfig(strings.NewReader(yaml))
+	assert.NoError(t, err)
+	var c Config
+	err = v.Unmarshal(&c)
+	assert.NoError(t, err)
+	ExpandEnvInStruct(&c)
+	if assert.NotNil(t, c.Registry) && assert.NotNil(t, c.Registry.DOCR) {
+		assert.Equal(t, "testtoken123", c.Registry.DOCR.Username)
+		assert.Equal(t, "testtoken123", c.Registry.DOCR.Password)
+	}
+}

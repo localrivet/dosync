@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"sync"
 
@@ -158,10 +159,10 @@ type HarborConfig struct {
 
 // DOCRConfig holds DigitalOcean Container Registry credentials.
 type DOCRConfig struct {
-	Token       string       `mapstructure:"token"`                            // DigitalOcean API token (for Bearer auth)
-	Username    string       `mapstructure:"username"`                         // DigitalOcean API token (for Basic Auth)
-	Password    string       `mapstructure:"password"`                         // DigitalOcean API token (for Basic Auth)
-	ImagePolicy *ImagePolicy `mapstructure:"image_policy" yaml:"image_policy"` // Advanced tag selection policy (optional)
+	Token       string       `mapstructure:"token" yaml:"token"`
+	Username    string       `mapstructure:"username" yaml:"username"`
+	Password    string       `mapstructure:"password" yaml:"password"`
+	ImagePolicy *ImagePolicy `mapstructure:"image_policy" yaml:"image_policy"`
 }
 
 // ECRConfig holds AWS ECR credentials.
@@ -259,6 +260,33 @@ func ValidateConfig(cfg *Config) error {
 	return err
 }
 
+// Recursively expand env vars in all string fields of a struct
+func ExpandEnvInStruct(v interface{}) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return
+	}
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		if !field.CanSet() {
+			continue
+		}
+		switch field.Kind() {
+		case reflect.String:
+			field.SetString(os.ExpandEnv(field.String()))
+		case reflect.Ptr:
+			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
+				ExpandEnvInStruct(field.Interface())
+			}
+		case reflect.Struct:
+			ExpandEnvInStruct(field.Addr().Interface())
+		}
+	}
+}
+
 // LoadConfig loads configuration from file, env, and flags (in that order of precedence)
 func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 	cfgOnce.Do(func() {
@@ -297,49 +325,8 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 			panic(fmt.Errorf("failed to unmarshal config: %w", err))
 		}
 
-		// Expand environment variables in registry credentials
-		if c.Registry != nil {
-			if c.Registry.DockerHub != nil {
-				c.Registry.DockerHub.Username = os.ExpandEnv(c.Registry.DockerHub.Username)
-				c.Registry.DockerHub.Password = os.ExpandEnv(c.Registry.DockerHub.Password)
-			}
-			if c.Registry.GCR != nil {
-				c.Registry.GCR.CredentialsFile = os.ExpandEnv(c.Registry.GCR.CredentialsFile)
-			}
-			if c.Registry.GHCR != nil {
-				c.Registry.GHCR.Token = os.ExpandEnv(c.Registry.GHCR.Token)
-			}
-			if c.Registry.ACR != nil {
-				c.Registry.ACR.TenantID = os.ExpandEnv(c.Registry.ACR.TenantID)
-				c.Registry.ACR.ClientID = os.ExpandEnv(c.Registry.ACR.ClientID)
-				c.Registry.ACR.ClientSecret = os.ExpandEnv(c.Registry.ACR.ClientSecret)
-				c.Registry.ACR.Registry = os.ExpandEnv(c.Registry.ACR.Registry)
-			}
-			if c.Registry.Quay != nil {
-				c.Registry.Quay.Token = os.ExpandEnv(c.Registry.Quay.Token)
-			}
-			if c.Registry.Harbor != nil {
-				c.Registry.Harbor.URL = os.ExpandEnv(c.Registry.Harbor.URL)
-				c.Registry.Harbor.Username = os.ExpandEnv(c.Registry.Harbor.Username)
-				c.Registry.Harbor.Password = os.ExpandEnv(c.Registry.Harbor.Password)
-			}
-			if c.Registry.DOCR != nil {
-				c.Registry.DOCR.Token = os.ExpandEnv(c.Registry.DOCR.Token)
-				c.Registry.DOCR.Username = os.ExpandEnv(c.Registry.DOCR.Username)
-				c.Registry.DOCR.Password = os.ExpandEnv(c.Registry.DOCR.Password)
-			}
-			if c.Registry.ECR != nil {
-				c.Registry.ECR.AWSAccessKeyID = os.ExpandEnv(c.Registry.ECR.AWSAccessKeyID)
-				c.Registry.ECR.AWSSecretAccessKey = os.ExpandEnv(c.Registry.ECR.AWSSecretAccessKey)
-				c.Registry.ECR.Region = os.ExpandEnv(c.Registry.ECR.Region)
-				c.Registry.ECR.Registry = os.ExpandEnv(c.Registry.ECR.Registry)
-			}
-			if c.Registry.Custom != nil {
-				c.Registry.Custom.URL = os.ExpandEnv(c.Registry.Custom.URL)
-				c.Registry.Custom.Username = os.ExpandEnv(c.Registry.Custom.Username)
-				c.Registry.Custom.Password = os.ExpandEnv(c.Registry.Custom.Password)
-			}
-		}
+		// Recursively expand environment variables in all string fields
+		ExpandEnvInStruct(&c)
 
 		cfg = &c
 		// Validate config after loading
