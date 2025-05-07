@@ -185,18 +185,46 @@ release:
 	  echo "-> Deleting release $$VERSION if it exists..."; \
 	  gh release delete "$$VERSION" --yes 2>/dev/null || true; \
 	  echo "-> Creating new release $$VERSION (this may take a moment)..."; \
-	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION"; \
+	  if ! gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION"; then \
+	    echo "FATAL: Failed to create GitHub release $$VERSION. Aborting."; \
+	    exit 1; \
+	  fi; \
+	  echo "-> Verifying release creation..."; \
+	  if ! gh release view "$$VERSION" &>/dev/null; then \
+	    echo "FATAL: GitHub release $$VERSION was not created or cannot be accessed. Aborting."; \
+	    exit 1; \
+	  fi; \
 	  echo "-> Release created successfully at: https://github.com/localrivet/dosync/releases/tag/$$VERSION"; \
 	  echo "-> Uploading linux/amd64 binary..."; \
-	  gh release upload "$$VERSION" release/linux/amd64/dosync#dosync-linux-amd64 --clobber; \
+	  if [ -f "release/linux/amd64/dosync" ]; then \
+	    gh release upload "$$VERSION" release/linux/amd64/dosync#dosync-linux-amd64 --clobber || echo "   Failed to upload linux/amd64 binary, continuing..."; \
+	  else \
+	    echo "   Error: linux/amd64 binary not found, skipping upload"; \
+	  fi; \
 	  echo "-> Uploading linux/arm64 binary..."; \
-	  gh release upload "$$VERSION" release/linux/arm64/dosync#dosync-linux-arm64 --clobber; \
+	  if [ -f "release/linux/arm64/dosync" ]; then \
+	    gh release upload "$$VERSION" release/linux/arm64/dosync#dosync-linux-arm64 --clobber || echo "   Failed to upload linux/arm64 binary, continuing..."; \
+	  else \
+	    echo "   Error: linux/arm64 binary not found, skipping upload"; \
+	  fi; \
 	  echo "-> Uploading linux/armv7 binary..."; \
-	  gh release upload "$$VERSION" release/linux/armv7/dosync#dosync-linux-armv7 --clobber; \
+	  if [ -f "release/linux/armv7/dosync" ]; then \
+	    gh release upload "$$VERSION" release/linux/armv7/dosync#dosync-linux-armv7 --clobber || echo "   Failed to upload linux/armv7 binary, continuing..."; \
+	  else \
+	    echo "   Error: linux/armv7 binary not found, skipping upload"; \
+	  fi; \
 	  echo "-> Uploading darwin/amd64 binary..."; \
-	  gh release upload "$$VERSION" release/darwin/amd64/dosync#dosync-darwin-amd64 --clobber; \
+	  if [ -f "release/darwin/amd64/dosync" ]; then \
+	    gh release upload "$$VERSION" release/darwin/amd64/dosync#dosync-darwin-amd64 --clobber || echo "   Failed to upload darwin/amd64 binary, continuing..."; \
+	  else \
+	    echo "   Error: darwin/amd64 binary not found, skipping upload"; \
+	  fi; \
 	  echo "-> Uploading darwin/arm64 binary..."; \
-	  gh release upload "$$VERSION" release/darwin/arm64/dosync#dosync-darwin-arm64 --clobber; \
+	  if [ -f "release/darwin/arm64/dosync" ]; then \
+	    gh release upload "$$VERSION" release/darwin/arm64/dosync#dosync-darwin-arm64 --clobber || echo "   Failed to upload darwin/arm64 binary, continuing..."; \
+	  else \
+	    echo "   Error: darwin/arm64 binary not found, skipping upload"; \
+	  fi; \
 	  echo "✅ Release process completed!"; \
 	'
 
@@ -210,13 +238,30 @@ release-assets:
 		fi; \
 		export VERSION="$$VERSION"; \
 		$(MAKE) build-all VERSION="$$VERSION"; \
-		gh release create "$$VERSION" \
+		echo "-> Verifying binaries exist before creating release..."; \
+		MISSING=0; \
+		for BINARY in "release/linux/amd64/dosync" "release/linux/arm64/dosync" "release/linux/armv7/dosync" "release/darwin/amd64/dosync" "release/darwin/arm64/dosync"; do \
+			if [ ! -f "$$BINARY" ]; then \
+				echo "   Error: $$BINARY not found!"; \
+				MISSING=1; \
+			fi; \
+		done; \
+		if [ $$MISSING -eq 1 ]; then \
+			echo "FATAL: One or more binaries are missing. Aborting release."; \
+			exit 1; \
+		fi; \
+		echo "-> Creating GitHub release $$VERSION..."; \
+		if ! gh release create "$$VERSION" \
+			--title "$$VERSION" --notes "Release $$VERSION" \
 			release/linux/amd64/dosync#dosync-linux-amd64 \
 			release/linux/arm64/dosync#dosync-linux-arm64 \
 			release/linux/armv7/dosync#dosync-linux-armv7 \
 			release/darwin/amd64/dosync#dosync-darwin-amd64 \
-			release/darwin/arm64/dosync#dosync-darwin-arm64 \
-			--title "$$VERSION" --notes "Release $$VERSION" \
+			release/darwin/arm64/dosync#dosync-darwin-arm64; then \
+			echo "FATAL: Failed to create GitHub release with assets. Aborting."; \
+			exit 1; \
+		fi; \
+		echo "✅ Release $$VERSION created successfully with all assets!"; \
 	'
 
 .PHONY: release-upload-assets
@@ -229,11 +274,33 @@ release-upload-assets:
 	  fi; \
 	  export VERSION="$$VERSION"; \
 	  $(MAKE) build-all VERSION="$$VERSION"; \
-	  gh release upload "$$VERSION" \
+	  echo "-> Verifying GitHub release $$VERSION exists..."; \
+	  if ! gh release view "$$VERSION" &>/dev/null; then \
+	    echo "FATAL: GitHub release $$VERSION does not exist or cannot be accessed. Create it first."; \
+	    exit 1; \
+	  fi; \
+	  echo "-> Verifying binaries exist before uploading..."; \
+	  MISSING=0; \
+	  for BINARY in "release/linux/amd64/dosync" "release/linux/arm64/dosync" "release/linux/armv7/dosync" "release/darwin/amd64/dosync" "release/darwin/arm64/dosync"; do \
+	    if [ ! -f "$$BINARY" ]; then \
+	      echo "   Error: $$BINARY not found!"; \
+	      MISSING=1; \
+	    fi; \
+	  done; \
+	  if [ $$MISSING -eq 1 ]; then \
+	    echo "FATAL: One or more binaries are missing. Aborting upload."; \
+	    exit 1; \
+	  fi; \
+	  echo "-> Uploading assets to GitHub release $$VERSION..."; \
+	  if ! gh release upload "$$VERSION" \
 	    release/linux/amd64/dosync#dosync-linux-amd64 \
 	    release/linux/arm64/dosync#dosync-linux-arm64 \
 	    release/linux/armv7/dosync#dosync-linux-armv7 \
 	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
 	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	    --clobber \
+	    --clobber; then \
+	    echo "FATAL: Failed to upload assets to GitHub release $$VERSION."; \
+	    exit 1; \
+	  fi; \
+	  echo "✅ Successfully uploaded all assets to GitHub release $$VERSION!"; \
 	'
