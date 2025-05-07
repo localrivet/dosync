@@ -146,16 +146,62 @@ docker-buildx:
 
 .PHONY: release
 release:
-	@if [ -z "$(VERSION)" ]; then \
-	  read -p "Enter release version (e.g., v1.0.0): " VERSION; \
-	fi; \
-	git add .; \
-	git commit -m "Release $${VERSION}"; \
-	git tag $${VERSION}; \
-	git push origin $${VERSION}; \
-	git push; \
-	$(MAKE) docker-buildx VERSION=$${VERSION}; \
-	$(MAKE) release-assets VERSION=$${VERSION}
+	@sh -c '\
+	  if [ -z "$(VERSION)" ]; then \
+	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	  else \
+	    VERSION="$(VERSION)"; \
+	  fi; \
+	  echo "🚀 Creating release $$VERSION..."; \
+	  echo "-> Adding all changes to git..."; \
+	  git add .; \
+	  echo "-> Committing changes..."; \
+	  git commit -m "Release $$VERSION" || echo "No changes to commit"; \
+	  echo "-> Checking if tag $$VERSION exists..."; \
+	  if git tag -l "$$VERSION" | grep -q "$$VERSION"; then \
+	    echo "   Tag $$VERSION already exists locally. Deleting..."; \
+	    git tag -d "$$VERSION"; \
+	  fi; \
+	  echo "-> Creating tag $$VERSION..."; \
+	  git tag "$$VERSION"; \
+	  echo "-> Checking if tag exists on remote..."; \
+	  if git ls-remote --tags origin | grep -q "refs/tags/$$VERSION"; then \
+	    echo "   Tag $$VERSION exists on remote. Forcing update..."; \
+	    git push origin :refs/tags/"$$VERSION" || echo "   Failed to delete remote tag, continuing..."; \
+	  fi; \
+	  echo "-> Pushing tag $$VERSION to remote..."; \
+	  git push origin "$$VERSION" || echo "   Failed to push tag, continuing..."; \
+	  echo "-> Pushing commits to remote..."; \
+	  git push || echo "   Failed to push commits, continuing..."; \
+	  echo "📦 Building and pushing Docker images..."; \
+	  echo "-> Building multi-platform Docker images and pushing to Docker Hub..."; \
+	  export VERSION="$$VERSION"; \
+	  $(MAKE) docker-buildx VERSION="$$VERSION" || echo "   Docker build/push failed, continuing..."; \
+	  echo "📦 Building platform binaries..."; \
+	  $(MAKE) build-all VERSION="$$VERSION"; \
+	  echo "📦 Creating/updating GitHub release..."; \
+	  echo "-> Checking if release $$VERSION exists on GitHub..."; \
+	  if gh release view "$$VERSION" &>/dev/null; then \
+	    echo "   Release $$VERSION exists. Uploading assets..."; \
+	    gh release upload "$$VERSION" \
+	      release/linux/amd64/dosync#dosync-linux-amd64 \
+	      release/linux/arm64/dosync#dosync-linux-arm64 \
+	      release/linux/armv7/dosync#dosync-linux-armv7 \
+	      release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	      release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	      --clobber || echo "   Failed to upload some assets, continuing..."; \
+	  else \
+	    echo "   Creating new release $$VERSION..."; \
+	    gh release create "$$VERSION" \
+	      release/linux/amd64/dosync#dosync-linux-amd64 \
+	      release/linux/arm64/dosync#dosync-linux-arm64 \
+	      release/linux/armv7/dosync#dosync-linux-armv7 \
+	      release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	      release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	      --title "$$VERSION" --notes "Release $$VERSION" || echo "   Failed to create release, continuing..."; \
+	  fi; \
+	  echo "✅ Release process completed!"; \
+	'
 
 .PHONY: release-assets
 release-assets:
