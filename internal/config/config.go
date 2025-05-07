@@ -158,7 +158,9 @@ type HarborConfig struct {
 
 // DOCRConfig holds DigitalOcean Container Registry credentials.
 type DOCRConfig struct {
-	Token       string       `mapstructure:"token"`                            // DigitalOcean API token
+	Token       string       `mapstructure:"token"`                            // DigitalOcean API token (for Bearer auth)
+	Username    string       `mapstructure:"username"`                         // DigitalOcean API token (for Basic Auth)
+	Password    string       `mapstructure:"password"`                         // DigitalOcean API token (for Basic Auth)
 	ImagePolicy *ImagePolicy `mapstructure:"image_policy" yaml:"image_policy"` // Advanced tag selection policy (optional)
 }
 
@@ -323,6 +325,8 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 			}
 			if c.Registry.DOCR != nil {
 				c.Registry.DOCR.Token = os.ExpandEnv(c.Registry.DOCR.Token)
+				c.Registry.DOCR.Username = os.ExpandEnv(c.Registry.DOCR.Username)
+				c.Registry.DOCR.Password = os.ExpandEnv(c.Registry.DOCR.Password)
 			}
 			if c.Registry.ECR != nil {
 				c.Registry.ECR.AWSAccessKeyID = os.ExpandEnv(c.Registry.ECR.AWSAccessKeyID)

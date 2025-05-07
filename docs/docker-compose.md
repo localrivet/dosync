@@ -97,6 +97,22 @@ services:
 
 You can set any of the above environment variables to control DOSync's behavior. CLI flags will always override environment variables if both are provided.
 
+## DigitalOcean Container Registry Configuration
+
+To use DigitalOcean Container Registry, your `dosync.yaml` should use the `docr` key:
+
+```yaml
+registry:
+  docr:
+    token: ${DOCR_TOKEN}
+    imagePolicy:
+      policy:
+        semver:
+          range: ''
+```
+
+> **Note:** The registry key must be `docr` (not `digitalocean`).
+
 ---
 
 ## [⬅️ Architecture](architecture.md) | [Next ➡️ Testing](testing.md)

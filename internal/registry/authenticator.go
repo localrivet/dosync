@@ -149,45 +149,64 @@ func (a *GHCRAuthenticator) Type() RegistryType {
 }
 
 // DOCRAuthenticator implements authentication for DigitalOcean Container Registry
+// Supports both Bearer token and Basic Auth (username/password)
 type DOCRAuthenticator struct {
-	Token string
+	Token    string
+	Username string
+	Password string
 }
 
 func (a *DOCRAuthenticator) Authenticate(req *http.Request) error {
+	if a.Username != "" && a.Password != "" {
+		req.SetBasicAuth(a.Username, a.Password)
+		return nil
+	}
 	if a.Token == "" {
 		return fmt.Errorf("DigitalOcean API token is required")
 	}
-
 	req.Header.Set("Authorization", "Bearer "+a.Token)
 	return nil
 }
 
 func (a *DOCRAuthenticator) Validate() error {
+	if a.Username != "" && a.Password != "" {
+		// Basic Auth: try a simple API call with basic auth
+		req, err := http.NewRequest("GET", "https://registry.digitalocean.com/v2/", nil)
+		if err != nil {
+			return fmt.Errorf("failed to create validation request: %w", err)
+		}
+		req.SetBasicAuth(a.Username, a.Password)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("validation request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("invalid DigitalOcean registry credentials (basic auth)")
+		}
+		return nil
+	}
 	if a.Token == "" {
 		return fmt.Errorf("DigitalOcean API token is required")
 	}
-
-	// Test validation by making a simple API call
+	// Bearer token: try a simple API call
 	req, err := http.NewRequest("GET", "https://api.digitalocean.com/v2/registry", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create validation request: %w", err)
 	}
-
 	if err := a.Authenticate(req); err != nil {
 		return err
 	}
-
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("validation request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("invalid DigitalOcean API token")
+		return fmt.Errorf("invalid DigitalOcean API token (bearer)")
 	}
-
 	return nil
 }
 
@@ -266,7 +285,9 @@ func CreateAuthenticator(regType RegistryType, options map[string]string) (Authe
 		}, nil
 	case DOCR:
 		return &DOCRAuthenticator{
-			Token: options["token"],
+			Token:    options["token"],
+			Username: options["username"],
+			Password: options["password"],
 		}, nil
 	case Custom:
 		return &CustomAuthenticator{

@@ -193,6 +193,10 @@ registry:
     password: ${HARBOR_PASSWORD}
   docr:
     token: ${DOCR_TOKEN}
+    imagePolicy:
+      policy:
+        semver:
+          range: ''
   ecr:
     aws_access_key_id: ${AWS_ACCESS_KEY_ID}
     aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}

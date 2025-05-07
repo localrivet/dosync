@@ -138,6 +138,8 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			case registry.DOCR:
 				if cfg.Registry.DOCR != nil {
 					options["token"] = cfg.Registry.DOCR.Token
+					options["username"] = cfg.Registry.DOCR.Username
+					options["password"] = cfg.Registry.DOCR.Password
 					imagePolicy = cfg.Registry.DOCR.ImagePolicy
 				}
 			case registry.DockerHub:
