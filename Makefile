@@ -170,9 +170,11 @@ release:
 	    git push origin :refs/tags/"$$VERSION" || echo "   Failed to delete remote tag, continuing..."; \
 	  fi; \
 	  echo "-> Pushing tag $$VERSION to remote..."; \
-	  git push origin "$$VERSION" || echo "   Failed to push tag, continuing..."; \
+	  git push origin "$$VERSION" || (echo "FATAL: Failed to push tag, aborting release" && exit 1); \
 	  echo "-> Pushing commits to remote..."; \
 	  git push || echo "   Failed to push commits, continuing..."; \
+	  echo "-> Waiting for GitHub to register the tag..."; \
+	  sleep 3; \
 	  echo "📦 Building and pushing Docker images..."; \
 	  echo "-> Building multi-platform Docker images and pushing to Docker Hub..."; \
 	  export VERSION="$$VERSION"; \
@@ -180,26 +182,18 @@ release:
 	  echo "📦 Building platform binaries..."; \
 	  $(MAKE) build-all VERSION="$$VERSION"; \
 	  echo "📦 Creating/updating GitHub release..."; \
-	  echo "-> Checking if release $$VERSION exists on GitHub..."; \
-	  if gh release view "$$VERSION" &>/dev/null; then \
-	    echo "   Release $$VERSION exists. Uploading assets..."; \
-	    gh release upload "$$VERSION" \
-	      release/linux/amd64/dosync#dosync-linux-amd64 \
-	      release/linux/arm64/dosync#dosync-linux-arm64 \
-	      release/linux/armv7/dosync#dosync-linux-armv7 \
-	      release/darwin/amd64/dosync#dosync-darwin-amd64 \
-	      release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	      --clobber || echo "   Failed to upload some assets, continuing..."; \
-	  else \
-	    echo "   Creating new release $$VERSION..."; \
-	    gh release create "$$VERSION" \
-	      release/linux/amd64/dosync#dosync-linux-amd64 \
-	      release/linux/arm64/dosync#dosync-linux-arm64 \
-	      release/linux/armv7/dosync#dosync-linux-armv7 \
-	      release/darwin/amd64/dosync#dosync-darwin-amd64 \
-	      release/darwin/arm64/dosync#dosync-darwin-arm64 \
-	      --title "$$VERSION" --notes "Release $$VERSION" || echo "   Failed to create release, continuing..."; \
-	  fi; \
+	  echo "-> Deleting release $$VERSION if it exists..."; \
+	  gh release delete "$$VERSION" --yes 2>/dev/null || true; \
+	  echo "-> Creating new release $$VERSION..."; \
+	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION" || (echo "FATAL: Failed to create GitHub release, aborting" && exit 1); \
+	  echo "-> Uploading binaries to release..."; \
+	  gh release upload "$$VERSION" \
+	    release/linux/amd64/dosync#dosync-linux-amd64 \
+	    release/linux/arm64/dosync#dosync-linux-arm64 \
+	    release/linux/armv7/dosync#dosync-linux-armv7 \
+	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	    --clobber || echo "   Failed to upload some assets, continuing..."; \
 	  echo "✅ Release process completed!"; \
 	'
 
