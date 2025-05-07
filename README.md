@@ -11,6 +11,8 @@
   <a href="https://github.com/localrivet/dosync/issues"><img src="https://img.shields.io/github/issues/localrivet/dosync" alt="GitHub Issues"></a>
 </p>
 
+# DOSync
+
 **DOSync** is a tool that synchronizes Docker Compose services with the latest images from any supported container registry. It automates the process of checking for new image tags, updating your Docker Compose file, and restarting the relevant services to ensure your deployments are always running the latest versions.
 
 ## Features
