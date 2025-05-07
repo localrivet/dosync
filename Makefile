@@ -144,8 +144,27 @@ docker-buildx:
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push .
 
+.PHONY: update-changelog
+# Update the changelog file with the new version
+update-changelog:
+	@sh -c '\
+	  if [ -z "$(VERSION)" ]; then \
+	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
+	  else \
+	    VERSION="$(VERSION)"; \
+	  fi; \
+	  DATE=$$(date +%Y-%m-%d); \
+	  if ! grep -q "## \[$$VERSION\]" CHANGELOG.md; then \
+	    echo "Updating CHANGELOG.md with version $$VERSION ($$DATE)"; \
+	    sed -i "" "s/^# Changelog/# Changelog\n\n## [$$VERSION] - $$DATE\n\n### Added\n- Latest release of DOSync\n- See previous releases for full feature list/" CHANGELOG.md; \
+	  else \
+	    echo "Version $$VERSION already exists in CHANGELOG.md"; \
+	  fi; \
+	'
+
 .PHONY: release
-release:
+# Simplified release process - tag, build, and create GitHub release with assets
+release: update-changelog
 	@sh -c '\
 	  if [ -z "$(VERSION)" ]; then \
 	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
@@ -175,61 +194,29 @@ release:
 	  git push || echo "   Failed to push commits, continuing..."; \
 	  echo "-> Waiting for GitHub to register the tag..."; \
 	  sleep 3; \
-	  echo "📦 Building and pushing Docker images..."; \
-	  echo "-> Building multi-platform Docker images and pushing to Docker Hub..."; \
-	  export VERSION="$$VERSION"; \
-	  $(MAKE) docker-buildx VERSION="$$VERSION" || echo "   Docker build/push failed, continuing..."; \
 	  echo "📦 Building platform binaries..."; \
 	  $(MAKE) build-all VERSION="$$VERSION"; \
-	  echo "📦 Creating/updating GitHub release..."; \
+	  echo "📦 Creating GitHub release..."; \
 	  echo "-> Deleting release $$VERSION if it exists..."; \
 	  gh release delete "$$VERSION" --yes 2>/dev/null || true; \
-	  echo "-> Creating new release $$VERSION (this may take a moment)..."; \
-	  if ! gh release create "$$VERSION" --target main --title "$$VERSION" --notes "Release $$VERSION"; then \
-	    echo "FATAL: Failed to create GitHub release $$VERSION. Aborting."; \
-	    exit 1; \
+	  echo "-> Reading release notes from CHANGELOG.md..."; \
+	  RELEASE_NOTES=$$(awk "/## \\[$$VERSION\\]/,/## \\[/{if(!/## \\[$$VERSION\\]/ && !/## \\[/){print}}" CHANGELOG.md | sed "/^$$/d"); \
+	  if [ -z "$$RELEASE_NOTES" ]; then \
+	    RELEASE_NOTES="Release $$VERSION"; \
 	  fi; \
-	  echo "-> Verifying release creation..."; \
-	  if ! gh release view "$$VERSION" &>/dev/null; then \
-	    echo "FATAL: GitHub release $$VERSION was not created or cannot be accessed. Aborting."; \
-	    exit 1; \
-	  fi; \
-	  echo "-> Release created successfully at: https://github.com/localrivet/dosync/releases/tag/$$VERSION"; \
-	  echo "-> Uploading linux/amd64 binary..."; \
-	  if [ -f "release/linux/amd64/dosync" ]; then \
-	    gh release upload "$$VERSION" release/linux/amd64/dosync#dosync-linux-amd64 --clobber || echo "   Failed to upload linux/amd64 binary, continuing..."; \
-	  else \
-	    echo "   Error: linux/amd64 binary not found, skipping upload"; \
-	  fi; \
-	  echo "-> Uploading linux/arm64 binary..."; \
-	  if [ -f "release/linux/arm64/dosync" ]; then \
-	    gh release upload "$$VERSION" release/linux/arm64/dosync#dosync-linux-arm64 --clobber || echo "   Failed to upload linux/arm64 binary, continuing..."; \
-	  else \
-	    echo "   Error: linux/arm64 binary not found, skipping upload"; \
-	  fi; \
-	  echo "-> Uploading linux/armv7 binary..."; \
-	  if [ -f "release/linux/armv7/dosync" ]; then \
-	    gh release upload "$$VERSION" release/linux/armv7/dosync#dosync-linux-armv7 --clobber || echo "   Failed to upload linux/armv7 binary, continuing..."; \
-	  else \
-	    echo "   Error: linux/armv7 binary not found, skipping upload"; \
-	  fi; \
-	  echo "-> Uploading darwin/amd64 binary..."; \
-	  if [ -f "release/darwin/amd64/dosync" ]; then \
-	    gh release upload "$$VERSION" release/darwin/amd64/dosync#dosync-darwin-amd64 --clobber || echo "   Failed to upload darwin/amd64 binary, continuing..."; \
-	  else \
-	    echo "   Error: darwin/amd64 binary not found, skipping upload"; \
-	  fi; \
-	  echo "-> Uploading darwin/arm64 binary..."; \
-	  if [ -f "release/darwin/arm64/dosync" ]; then \
-	    gh release upload "$$VERSION" release/darwin/arm64/dosync#dosync-darwin-arm64 --clobber || echo "   Failed to upload darwin/arm64 binary, continuing..."; \
-	  else \
-	    echo "   Error: darwin/arm64 binary not found, skipping upload"; \
-	  fi; \
+	  echo "-> Creating new release $$VERSION with notes from CHANGELOG.md..."; \
+	  gh release create "$$VERSION" --target main --title "$$VERSION" --notes "$$RELEASE_NOTES" \
+	    release/linux/amd64/dosync#dosync-linux-amd64 \
+	    release/linux/arm64/dosync#dosync-linux-arm64 \
+	    release/linux/armv7/dosync#dosync-linux-armv7 \
+	    release/darwin/amd64/dosync#dosync-darwin-amd64 \
+	    release/darwin/arm64/dosync#dosync-darwin-arm64 \
+	    || (echo "FATAL: Failed to create GitHub release, aborting." && exit 1); \
 	  echo "✅ Release process completed!"; \
 	'
 
 .PHONY: release-assets
-release-assets:
+release-assets: update-changelog
 	@sh -c '\
 		if [ -z "$(VERSION)" ]; then \
 			read -p "Enter release version (e.g., v1.0.0): " VERSION; \
@@ -251,8 +238,14 @@ release-assets:
 			exit 1; \
 		fi; \
 		echo "-> Creating GitHub release $$VERSION..."; \
+		CHANGELOG_SECTION=$$(sed -n "/## \[$$VERSION\]/,/## \[/p" CHANGELOG.md | sed $$'"$$/## \\\[.*$$/d"'); \
+		if [ -z "$$CHANGELOG_SECTION" ]; then \
+			RELEASE_NOTES="Release $$VERSION"; \
+		else \
+			RELEASE_NOTES="$$CHANGELOG_SECTION"; \
+		fi; \
 		if ! gh release create "$$VERSION" \
-			--title "$$VERSION" --notes "Release $$VERSION" \
+			--title "$$VERSION" --notes "$$RELEASE_NOTES" \
 			release/linux/amd64/dosync#dosync-linux-amd64 \
 			release/linux/arm64/dosync#dosync-linux-arm64 \
 			release/linux/armv7/dosync#dosync-linux-armv7 \
@@ -265,7 +258,7 @@ release-assets:
 	'
 
 .PHONY: release-upload-assets
-release-upload-assets:
+release-upload-assets: update-changelog
 	@sh -c '\
 	  if [ -z "$(VERSION)" ]; then \
 	    read -p "Enter release version (e.g., v1.0.0): " VERSION; \
