@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -63,7 +63,7 @@ func NewDatabase(dbPath string) (*Database, error) {
 	}
 
 	// Open the database file with WAL mode for better concurrency
-	db, err := sql.Open("sqlite3", dbPath+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", dbPath+"?_journal=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

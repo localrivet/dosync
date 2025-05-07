@@ -1,6 +1,12 @@
+# Go build optimizations: smaller binaries, reproducible builds
+# -ldflags="-s -w": strip debug info and symbol tables
+# -trimpath: remove file system paths for reproducibility
+# CGO_ENABLED=0: pure-Go build (no C dependencies)
+# Optionally, run 'upx --best --lzma <binary>' after build for further compression
+
 # Go parameters
 GOCMD=go
-GOBUILD=$(GOCMD) build
+GOBUILD=$(GOCMD) build $(LDFLAGS)
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
@@ -13,13 +19,15 @@ GOARCH ?= $(shell go env GOARCH)
 # Binary and versioning
 BINARY_NAME=dosync
 VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
-LDFLAGS=-ldflags "-X main.Version=${VERSION}"
+LDFLAGS=-ldflags "-X main.Version=${VERSION} -s -w" -trimpath
 BUILD_DIR=release
 
 # Docker Hub parameters
 DOCKER=docker
 IMAGE_NAME=localrivet/dosync
 TAG ?= latest
+
+export CGO_ENABLED=0
 
 .PHONY: help
 help:
@@ -53,32 +61,32 @@ all: clean build-all
 build:
 	@echo "Building for current platform..."
 	@mkdir -p $(BUILD_DIR)/$(GOOS)/$(GOARCH)
-	@$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(GOOS)/$(GOARCH)/$(BINARY_NAME) .
+	$(GOBUILD) -o $(BUILD_DIR)/$(GOOS)/$(GOARCH)/$(BINARY_NAME) .
 
 build-linux:
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(BUILD_DIR)/linux/amd64
-	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/amd64/$(BINARY_NAME) .
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/linux/amd64/$(BINARY_NAME) .
 
 build-darwin-arm64:
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(BUILD_DIR)/darwin/arm64
-	@GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/darwin/arm64/$(BINARY_NAME) .
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/darwin/arm64/$(BINARY_NAME) .
 
 build-darwin-amd64:
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(BUILD_DIR)/darwin/amd64
-	@GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/darwin/amd64/$(BINARY_NAME) .
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/darwin/amd64/$(BINARY_NAME) .
 
 build-linux-arm64:
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(BUILD_DIR)/linux/arm64
-	@GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/arm64/$(BINARY_NAME) .
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/linux/arm64/$(BINARY_NAME) .
 
 build-linux-armv7:
 	@echo "Building for Linux (arm/v7)..."
 	@mkdir -p $(BUILD_DIR)/linux/armv7
-	@GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/linux/armv7/$(BINARY_NAME) .
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/linux/armv7/$(BINARY_NAME) .
 
 build-all: build-linux build-linux-arm64 build-linux-armv7 build-darwin-arm64 build-darwin-amd64
 
