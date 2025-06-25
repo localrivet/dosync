@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.1.5] - 2025-06-25
+
+### Added
+- Latest release of DOSync
+- See previous releases for full feature list
+
 ## [v0.1.4] - 2025-05-07
 
 ### Added
