@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"strings"
 	"testing"
 	"time" // Import time for time.Duration in test cases
 )
@@ -155,4 +156,55 @@ type Config struct {
 	Verbose       bool
 	Rollback      RollbackConfig
 	Notifications NotificationConfig
+}
+
+func TestParseRepositoryParts_DOCR(t *testing.T) {
+	tests := []struct {
+		name       string
+		repository string
+		expected   RepositoryParts
+	}{
+		{
+			name:       "DOCR repo without tag",
+			repository: "goshare/localrivet-backend",
+			expected:   RepositoryParts{Registry: "goshare", Name: "localrivet-backend", FullPath: "goshare/localrivet-backend"},
+		},
+		{
+			name:       "DOCR repo with tag",
+			repository: "goshare/localrivet-backend:latest",
+			expected:   RepositoryParts{Registry: "goshare", Name: "localrivet-backend", FullPath: "goshare/localrivet-backend:latest"},
+		},
+		{
+			name:       "DOCR repo with digest",
+			repository: "goshare/localrivet-backend@sha256:abc123",
+			expected:   RepositoryParts{Registry: "goshare", Name: "localrivet-backend", FullPath: "goshare/localrivet-backend@sha256:abc123"},
+		},
+		{
+			name:       "DOCR repo with nested path and tag",
+			repository: "goshare/project/localrivet-backend:main-20250507031013-5e37d31",
+			expected:   RepositoryParts{Registry: "goshare", Name: "project/localrivet-backend", FullPath: "goshare/project/localrivet-backend:main-20250507031013-5e37d31"},
+		},
+	}
+
+	stripTagOrDigest := func(name string) string {
+		if idx := strings.IndexAny(name, ":@"); idx != -1 {
+			return name[:idx]
+		}
+		return name
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parts := ParseRepositoryParts(tt.repository)
+			if parts.Registry != tt.expected.Registry {
+				t.Errorf("Registry = %q, want %q", parts.Registry, tt.expected.Registry)
+			}
+			// For DOCR API, the Name must not include tag or digest
+			wantName := stripTagOrDigest(tt.expected.Name)
+			gotName := stripTagOrDigest(parts.Name)
+			if gotName != wantName {
+				t.Errorf("Name = %q, want %q", gotName, wantName)
+			}
+		})
+	}
 }

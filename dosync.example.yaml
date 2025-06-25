@@ -1,0 +1,113 @@
+# DOSync Configuration Example
+# This file shows the correct structure for configuring DOSync
+
+# Check interval - how often to check for new images
+# Supports: checkInterval, interval, or CHECK_INTERVAL
+checkInterval: "2m"
+
+# Enable verbose logging
+# Supports: verbose or VERBOSE
+verbose: true
+
+# Registry configurations
+registry:
+  # GitHub Container Registry (GHCR)
+  ghcr:
+    token: "${GITHUB_TOKEN}"  # Environment variable will be expanded
+    # Alternative: token: "ghp_your_token_here"
+    
+    # Image policy (optional) - how to select the latest tag
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  # Docker Hub (optional)
+  dockerhub:
+    username: "your_username"
+    password: "${DOCKERHUB_PASSWORD}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  # Google Container Registry (optional)
+  gcr:
+    credentials_file: "/path/to/gcp.json"
+    imagePolicy:
+      policy:
+        semver:
+          range: ">=1.0.0 <2.0.0"
+
+  # Azure Container Registry (optional)
+  acr:
+    tenant_id: "your-tenant-id"
+    client_id: "your-client-id"
+    client_secret: "${AZURE_CLIENT_SECRET}"
+    registry: "yourregistry.azurecr.io"
+    imagePolicy:
+      policy:
+        numerical:
+          order: desc
+
+  # DigitalOcean Container Registry (optional)
+  docr:
+    token: "${DOCR_TOKEN}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  # AWS ECR (optional)
+  ecr:
+    aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+    aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "us-east-1"
+    registry: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+    imagePolicy:
+      policy:
+        semver:
+          range: ">=1.0.0"
+
+  # Harbor (optional)
+  harbor:
+    url: "https://harbor.example.com"
+    username: "harbor_user"
+    password: "${HARBOR_PASSWORD}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  # Quay.io (optional)
+  quay:
+    token: "${QUAY_TOKEN}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  # Custom registry (optional)
+  custom:
+    url: "https://custom.registry.com"
+    username: "custom_user"
+    password: "${CUSTOM_REGISTRY_PASSWORD}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+# Dashboard configuration (optional)
+dashboard:
+  enabled: true
+  port: "8080"
+  user: "admin"
+  pass: "${DASHBOARD_PASSWORD}"
+  ip_whitelist: "127.0.0.1,10.0.0.0/8"
+
+# Rollback configuration (optional)
+rollback:
+  ComposeFilePath: "/app/docker-compose.yml"
+  BackupDir: "/app/backups"
+  MaxHistory: 10
+  DefaultRollbackOnFailure: true 

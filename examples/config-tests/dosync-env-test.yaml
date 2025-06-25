@@ -1,0 +1,21 @@
+# Simple Environment Variable Expansion Test
+# This configuration demonstrates basic env var expansion
+
+checkInterval: "${CHECK_INTERVAL}"
+verbose: true
+
+registry:
+  ghcr:
+    token: "${GITHUB_TOKEN}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc
+
+  dockerhub:
+    username: "${DOCKERHUB_USER}"
+    password: "${DOCKERHUB_PASS}"
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc 

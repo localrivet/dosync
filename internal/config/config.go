@@ -296,8 +296,10 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 		if configPath != "" {
 			v.SetConfigFile(configPath)
 		} else {
-			v.SetConfigName("config")
-			v.AddConfigPath(".")
+			// Look for dosync config files in common locations
+			v.SetConfigName("dosync")
+			v.AddConfigPath(".")    // Current directory
+			v.AddConfigPath("/app") // Docker container path
 			v.AddConfigPath("/etc/dosync/")
 		}
 
@@ -314,16 +316,30 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 
 		// Set defaults
 		v.SetDefault("CHECK_INTERVAL", "1m")
+		v.SetDefault("checkInterval", "1m")
+		v.SetDefault("interval", "1m")
 		v.SetDefault("VERBOSE", false)
+		v.SetDefault("verbose", false)
 
-		// Read config file if present
-		_ = v.ReadInConfig() // Ignore error if not found
+		// Try to read config file
+		if err := v.ReadInConfig(); err != nil {
+			// Only fail if a specific config file was requested but not found
+			if configPath != "" {
+				cfg = nil
+				panic(fmt.Errorf("failed to read config file %s: %w", configPath, err))
+			}
+			// Otherwise, continue with defaults and env vars
+		}
 
 		// Unmarshal into struct
 		var c Config
 		if err := v.Unmarshal(&c); err != nil {
+			cfg = nil
 			panic(fmt.Errorf("failed to unmarshal config: %w", err))
 		}
+
+		// Handle alternative field names manually
+		handleAlternativeFieldNames(v, &c)
 
 		// Recursively expand environment variables in all string fields
 		ExpandEnvInStruct(&c)
@@ -331,10 +347,85 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 		cfg = &c
 		// Validate config after loading
 		if err := ValidateConfig(cfg); err != nil {
+			cfg = nil
 			panic(fmt.Errorf("invalid config: %w", err))
 		}
 	})
+	if cfg == nil {
+		return nil, fmt.Errorf("config loading failed")
+	}
 	return cfg, nil
+}
+
+// handleAlternativeFieldNames manually handles alternative field names that mapstructure doesn't support
+func handleAlternativeFieldNames(v *viper.Viper, c *Config) {
+	// Handle CheckInterval alternatives
+	if c.CheckInterval == "1m" { // Check if it's still the default
+		if val := v.GetString("checkInterval"); val != "" {
+			c.CheckInterval = val
+		} else if val := v.GetString("interval"); val != "" {
+			c.CheckInterval = val
+		}
+	}
+
+	// Handle Verbose alternatives
+	if !c.Verbose { // Check if it's still the default
+		if val := v.GetBool("verbose"); val {
+			c.Verbose = val
+		}
+	}
+
+	// Handle registry imagePolicy alternatives
+	if c.Registry != nil {
+		handleRegistryImagePolicyAlternatives(v, c.Registry)
+	}
+}
+
+// handleRegistryImagePolicyAlternatives handles imagePolicy vs image_policy field names
+func handleRegistryImagePolicyAlternatives(v *viper.Viper, registry *RegistryConfig) {
+	// Helper function to check for imagePolicy alternative
+	checkImagePolicy := func(registryName string, currentPolicy *ImagePolicy) *ImagePolicy {
+		if currentPolicy != nil {
+			return currentPolicy // Already set via image_policy
+		}
+
+		// Check for imagePolicy alternative
+		if v.IsSet(registryName + ".imagePolicy") {
+			var policy ImagePolicy
+			if err := v.UnmarshalKey(registryName+".imagePolicy", &policy); err == nil {
+				return &policy
+			}
+		}
+		return nil
+	}
+
+	if registry.DockerHub != nil {
+		registry.DockerHub.ImagePolicy = checkImagePolicy("registry.dockerhub", registry.DockerHub.ImagePolicy)
+	}
+	if registry.GCR != nil {
+		registry.GCR.ImagePolicy = checkImagePolicy("registry.gcr", registry.GCR.ImagePolicy)
+	}
+	if registry.GHCR != nil {
+		registry.GHCR.ImagePolicy = checkImagePolicy("registry.ghcr", registry.GHCR.ImagePolicy)
+	}
+	if registry.ACR != nil {
+		registry.ACR.ImagePolicy = checkImagePolicy("registry.acr", registry.ACR.ImagePolicy)
+	}
+	if registry.Quay != nil {
+		registry.Quay.ImagePolicy = checkImagePolicy("registry.quay", registry.Quay.ImagePolicy)
+	}
+	if registry.Harbor != nil {
+		registry.Harbor.ImagePolicy = checkImagePolicy("registry.harbor", registry.Harbor.ImagePolicy)
+	}
+	if registry.DOCR != nil {
+		registry.DOCR.ImagePolicy = checkImagePolicy("registry.docr", registry.DOCR.ImagePolicy)
+	}
+	if registry.ECR != nil {
+		registry.ECR.ImagePolicy = checkImagePolicy("registry.ecr", registry.ECR.ImagePolicy)
+	}
+	if registry.Custom != nil {
+		registry.Custom.ImagePolicy = checkImagePolicy("registry.custom", registry.Custom.ImagePolicy)
+	}
 }
 
 // GetConfig returns the loaded config singleton

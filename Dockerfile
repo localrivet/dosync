@@ -35,4 +35,7 @@ RUN mkdir -p /app/backups && chmod 777 /app/backups
 # and to modify the docker-compose.yml file
 
 ENTRYPOINT ["./dosync"]
-CMD ["sync", "-f", "/app/docker-compose.yml", "-i", "${CHECK_INTERVAL:-1m}", "${VERBOSE:-}"] 
+
+# Default command that will automatically detect dosync.yaml if present
+# or use environment variables and defaults
+CMD ["sync", "-f", "/app/docker-compose.yml"] 
