@@ -131,6 +131,7 @@ type GCRConfig struct {
 // GHCRConfig holds GitHub Container Registry credentials.
 type GHCRConfig struct {
 	Token       string       `mapstructure:"token"`                            // GitHub Personal Access Token
+	Username    string       `mapstructure:"username"`                         // GitHub username (optional, defaults to token owner)
 	ImagePolicy *ImagePolicy `mapstructure:"image_policy" yaml:"image_policy"` // Advanced tag selection policy (optional)
 }
 

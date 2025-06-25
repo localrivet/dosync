@@ -151,6 +151,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			case registry.GHCR:
 				if cfg.Registry.GHCR != nil {
 					options["token"] = cfg.Registry.GHCR.Token
+					options["username"] = cfg.Registry.GHCR.Username
 					imagePolicy = cfg.Registry.GHCR.ImagePolicy
 				}
 			case registry.GCR:
@@ -206,9 +207,11 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			continue
 		}
 
-		tags, err := client.GetTags(info.Path)
+		// Strip tag from repository path for GetTags call
+		repoPath := registry.StripTagFromPath(info.Path)
+		tags, err := client.GetTags(repoPath)
 		if err != nil {
-			logVerbose(verbose, fmt.Sprintf("Error getting tags for %s repo %s: %v", info.Type, info.Path, err), true)
+			logVerbose(verbose, fmt.Sprintf("Error getting tags for %s repo %s: %v", info.Type, repoPath, err), true)
 			continue
 		}
 

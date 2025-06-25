@@ -1,12 +1,12 @@
 # Simple Environment Variable Expansion Test
 # This configuration demonstrates basic env var expansion
 
-checkInterval: "${CHECK_INTERVAL}"
+checkInterval: "${TEST_INTERVAL}"
 verbose: true
 
 registry:
   ghcr:
-    token: "${GITHUB_TOKEN}"
+    token: "${GITHUB_PAT}"
     imagePolicy:
       policy:
         alphabetical:

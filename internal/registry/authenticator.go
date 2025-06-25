@@ -99,8 +99,10 @@ func (a *DockerHubAuthenticator) Type() RegistryType {
 }
 
 // GHCRAuthenticator implements authentication for GitHub Container Registry
+// GHCR uses Docker Registry v2 OAuth2 authentication flow
 type GHCRAuthenticator struct {
-	Token string
+	Token    string
+	Username string // Optional, defaults to token owner if not provided
 }
 
 func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
@@ -109,9 +111,64 @@ func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
 		return nil
 	}
 
-	// GitHub accepts token as a bearer token
-	req.Header.Set("Authorization", "Bearer "+a.Token)
+	// For GHCR, we need to get a Bearer token using the Docker Registry v2 OAuth2 flow
+	bearerToken, err := a.getBearerToken(req.URL.Path)
+	if err != nil {
+		return fmt.Errorf("failed to get GHCR bearer token: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
 	return nil
+}
+
+func (a *GHCRAuthenticator) getBearerToken(resourcePath string) (string, error) {
+	// Extract repository from the path (e.g., /v2/tax-equity/solar-equity-hub/tags/list -> tax-equity/solar-equity-hub)
+	pathParts := strings.Split(strings.TrimPrefix(resourcePath, "/v2/"), "/")
+	if len(pathParts) < 2 {
+		return "", fmt.Errorf("invalid resource path: %s", resourcePath)
+	}
+
+	repository := strings.Join(pathParts[:len(pathParts)-2], "/") // Remove the last two parts (like "tags/list")
+	if repository == "" {
+		return "", fmt.Errorf("could not extract repository from path: %s", resourcePath)
+	}
+
+	// GHCR OAuth2 token endpoint
+	tokenURL := fmt.Sprintf("https://ghcr.io/token?service=ghcr.io&scope=repository:%s:pull", repository)
+
+	req, err := http.NewRequest("GET", tokenURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create token request: %w", err)
+	}
+
+	// Use Basic Auth with GitHub credentials to get the Bearer token
+	username := a.Username
+	if username == "" {
+		username = "localrivet" // Default username, but the token is what matters
+	}
+	req.SetBasicAuth(username, a.Token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		Token string `json:"token"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return "", fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	return tokenResp.Token, nil
 }
 
 func (a *GHCRAuthenticator) Validate() error {
@@ -120,25 +177,10 @@ func (a *GHCRAuthenticator) Validate() error {
 		return nil
 	}
 
-	// Test validation by making a simple API call
-	req, err := http.NewRequest("GET", "https://ghcr.io/token", nil)
+	// Test validation by trying to get a bearer token for a simple repository
+	_, err := a.getBearerToken("/v2/library/hello-world/tags/list")
 	if err != nil {
-		return fmt.Errorf("failed to create validation request: %w", err)
-	}
-
-	if err := a.Authenticate(req); err != nil {
-		return err
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("validation request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("invalid GitHub token")
+		return fmt.Errorf("invalid GitHub token for GHCR access: %w", err)
 	}
 
 	return nil
@@ -281,7 +323,8 @@ func CreateAuthenticator(regType RegistryType, options map[string]string) (Authe
 		}, nil
 	case GHCR:
 		return &GHCRAuthenticator{
-			Token: options["token"],
+			Token:    options["token"],
+			Username: options["username"],
 		}, nil
 	case DOCR:
 		return &DOCRAuthenticator{

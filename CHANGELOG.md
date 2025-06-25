@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.1.6] - 2025-01-07
+
+### Fixed
+- **GHCR Authentication**: Fixed GitHub Container Registry authentication to use proper Docker Registry v2 OAuth2 Bearer token flow instead of Basic Auth
+- **GHCR Private Repositories**: Full support for private GHCR repositories with proper token scoping
+- **GHCR Error Messages**: Enhanced error messages with specific debugging information and actual API URLs
+
+### Added
+- **GHCR First-Class Support**: Comprehensive GHCR configuration documentation with examples
+- **GHCR Token Validation**: Automatic Bearer token acquisition per repository scope
+- **GHCR Troubleshooting Guide**: Detailed troubleshooting section for common GHCR issues
+
+### Changed
+- **GHCR API Endpoints**: Updated to use correct Docker Registry v2 API endpoints (`https://ghcr.io/v2/`)
+- **GHCR Repository Path Handling**: Fixed repository path to properly strip tags before API calls
+- **GHCR Error Reporting**: Error messages now include specific URLs and actionable debugging information
+
 ## [v0.1.5] - 2025-06-25
 
 ### Fixed

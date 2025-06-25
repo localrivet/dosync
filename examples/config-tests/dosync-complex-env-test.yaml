@@ -2,14 +2,14 @@
 # This configuration demonstrates various env var expansion patterns
 
 # Alternative field name formats (all should work)
-interval: "${CHECK_INTERVAL}"  # Using 'interval' instead of 'checkInterval'
+checkInterval: "${TEST_INTERVAL}"
 verbose: true
 
 registry:
   # GitHub Container Registry with token expansion
   ghcr:
-    token: "${GITHUB_TOKEN}"
-    imagePolicy:  # Using 'imagePolicy' instead of 'image_policy'
+    token: "${GITHUB_PAT}"
+    imagePolicy:
       policy:
         alphabetical:
           order: desc
@@ -20,20 +20,7 @@ registry:
     password: "${DOCKERHUB_PASS}"
     imagePolicy:
       policy:
-        semver:
-          range: ">=1.0.0"
-
-  # Example with mixed env vars and static values
-  custom:
-    url: "https://registry.example.com"
-    username: "${CUSTOM_USER:-defaultuser}"  # With default fallback
-    password: "${CUSTOM_PASS}"
-    imagePolicy:
-      filterTags:
-        pattern: "^v?([0-9]+\\.[0-9]+\\.[0-9]+)$"
-        extract: "$1"
-      policy:
-        numerical:
+        alphabetical:
           order: desc
 
 # Dashboard config with env expansion
@@ -41,4 +28,25 @@ dashboard:
   enabled: true
   port: "${DASHBOARD_PORT:-8080}"
   user: "${DASHBOARD_USER:-admin}"
-  pass: "${DASHBOARD_PASS:-secret}" 
+  pass: "${DASHBOARD_PASS:-secret}"
+
+rollingUpdate: true
+healthCheck: http
+healthEndpoint: /api/health
+delay: 30s
+rollbackOnFailure: true
+
+services:
+  app:
+    healthCheck: http
+    healthEndpoint: /api/health
+    delay: 45s
+    maxUnavailable: 0
+  
+  postgres:
+    skip: true
+    
+  traefik:
+    healthCheck: http
+    healthEndpoint: /api/version
+    delay: 15s 

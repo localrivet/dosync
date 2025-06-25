@@ -88,7 +88,45 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/yourimage:latest
 ```
 
-> **Tip:** For private repositories, you may need to [create a Personal Access Token](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) with `write:packages` scope and use it as a secret.
+### GHCR Authentication Requirements
+
+**For Public Repositories:**
+- The default `GITHUB_TOKEN` provided by GitHub Actions has sufficient permissions
+
+**For Private Repositories or Enhanced Permissions:**
+- Create a [Personal Access Token](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) with the following scopes:
+  - `write:packages` - For pushing images
+  - `read:packages` - For pulling images (DOSync usage)
+  - `repo` - For private repository access
+- Store the token as `GHCR_TOKEN` in your repository secrets
+- Update the workflow to use your custom token:
+
+```yaml
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}  # Use custom token for enhanced permissions
+```
+
+### DOSync GHCR Configuration
+
+After pushing images to GHCR, configure DOSync to monitor and update them:
+
+```yaml
+# dosync.yaml
+registry:
+  ghcr:
+    token: "${GITHUB_TOKEN}"      # Your Personal Access Token with read:packages scope
+    username: "yourusername"      # Optional: GitHub username
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc             # Use latest tag alphabetically
+```
+
+**Note:** DOSync v0.1.6+ includes enhanced GHCR support with proper OAuth2 authentication and detailed error messages for easier troubleshooting.
 
 ## Adapting for Other Registries
 

@@ -1,0 +1,11 @@
+checkInterval: "2m"
+verbose: true
+
+registry:
+  ghcr:
+    token: "${GITHUB_PAT}"
+    username: "localrivet"  # Optional: explicit username
+    imagePolicy:
+      policy:
+        alphabetical:
+          order: desc 

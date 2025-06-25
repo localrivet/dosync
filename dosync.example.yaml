@@ -13,50 +13,47 @@ verbose: true
 registry:
   # GitHub Container Registry (GHCR)
   ghcr:
-    token: "${GITHUB_TOKEN}"  # Environment variable will be expanded
-    # Alternative: token: "ghp_your_token_here"
-    
-    # Image policy (optional) - how to select the latest tag
-    imagePolicy:
+    token: "${GITHUB_PAT}"      # Required: GitHub Personal Access Token
+    username: "myusername"      # Optional: GitHub username (defaults to token owner)
+    imagePolicy:                # Optional: Advanced tag selection
       policy:
         alphabetical:
-          order: desc
+          order: desc           # Use latest alphabetically
 
   # Docker Hub (optional)
   dockerhub:
-    username: "your_username"
-    password: "${DOCKERHUB_PASSWORD}"
-    imagePolicy:
-      policy:
-        alphabetical:
-          order: desc
-
-  # Google Container Registry (optional)
-  gcr:
-    credentials_file: "/path/to/gcp.json"
+    username: "${DOCKERHUB_USER}"
+    password: "${DOCKERHUB_PASS}"
     imagePolicy:
       policy:
         semver:
-          range: ">=1.0.0 <2.0.0"
+          range: ">=1.0.0"      # Only consider stable releases
+
+  # Google Container Registry (optional)
+  gcr:
+    credentials_file: "/path/to/gcp-service-account.json"
+    imagePolicy:
+      policy:
+        semver:
+          range: ">=2.0.0 <3.0.0"
 
   # Azure Container Registry (optional)
   acr:
-    tenant_id: "your-tenant-id"
-    client_id: "your-client-id"
+    tenant_id: "${AZURE_TENANT_ID}"
+    client_id: "${AZURE_CLIENT_ID}"
     client_secret: "${AZURE_CLIENT_SECRET}"
-    registry: "yourregistry.azurecr.io"
-    imagePolicy:
-      policy:
-        numerical:
-          order: desc
+    registry: "myregistry.azurecr.io"
 
   # DigitalOcean Container Registry (optional)
   docr:
-    token: "${DOCR_TOKEN}"
+    token: "${DO_TOKEN}"
     imagePolicy:
+      filterTags:
+        pattern: "^main-([a-f0-9]+)-([0-9]+)$"  # Match: main-abc123-1234567890
+        extract: "$2"           # Extract timestamp for sorting
       policy:
-        alphabetical:
-          order: desc
+        numerical:
+          order: desc           # Latest timestamp first
 
   # AWS ECR (optional)
   ecr:
@@ -64,50 +61,57 @@ registry:
     aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
     region: "us-east-1"
     registry: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
-    imagePolicy:
-      policy:
-        semver:
-          range: ">=1.0.0"
 
   # Harbor (optional)
   harbor:
     url: "https://harbor.example.com"
-    username: "harbor_user"
-    password: "${HARBOR_PASSWORD}"
-    imagePolicy:
-      policy:
-        alphabetical:
-          order: desc
+    username: "${HARBOR_USER}"
+    password: "${HARBOR_PASS}"
 
   # Quay.io (optional)
   quay:
     token: "${QUAY_TOKEN}"
-    imagePolicy:
-      policy:
-        alphabetical:
-          order: desc
 
   # Custom registry (optional)
   custom:
-    url: "https://custom.registry.com"
-    username: "custom_user"
-    password: "${CUSTOM_REGISTRY_PASSWORD}"
-    imagePolicy:
-      policy:
-        alphabetical:
-          order: desc
+    url: "https://registry.example.com"
+    username: "${CUSTOM_USER}"
+    password: "${CUSTOM_PASS}"
 
 # Dashboard configuration (optional)
 dashboard:
   enabled: true
   port: "8080"
-  user: "admin"
-  pass: "${DASHBOARD_PASSWORD}"
+  user: "${DASHBOARD_USER}"
+  pass: "${DASHBOARD_PASS}"
   ip_whitelist: "127.0.0.1,10.0.0.0/8"
 
 # Rollback configuration (optional)
 rollback:
-  ComposeFilePath: "/app/docker-compose.yml"
-  BackupDir: "/app/backups"
-  MaxHistory: 10
-  DefaultRollbackOnFailure: true 
+  enabled: true
+  max_history: 5
+  backup_location: "./backups"
+
+# Rolling update configuration
+rollingUpdate: true
+healthCheck: http
+healthEndpoint: /api/health
+delay: 30s
+rollbackOnFailure: true
+
+# Service-specific overrides (optional)
+services:
+  web:
+    healthCheck: http
+    healthEndpoint: /health
+    delay: 15s
+    maxUnavailable: 1
+
+  api:
+    healthCheck: http  
+    healthEndpoint: /api/health
+    delay: 45s
+    maxUnavailable: 0    # Zero-downtime deployments
+
+  database:
+    skip: true           # Don't update database images 

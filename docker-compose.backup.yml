@@ -1,0 +1,6 @@
+version: "3"
+services:
+  app:
+    image: ghcr.io/tax-equity/solar-equity-hub:latest
+    ports:
+      - "3000:3000"

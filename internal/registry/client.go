@@ -3,6 +3,7 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -166,34 +167,58 @@ type GHCRClient struct {
 }
 
 func (c *GHCRClient) GetTags(repository string) ([]string, error) {
+	// GHCR follows Docker Registry v2 API specification
+	// URL format: https://ghcr.io/v2/{namespace}/{repository}/tags/list
 	url := fmt.Sprintf("%s/%s/tags/list", c.baseURL, repository)
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request for %s: %w", url, err)
 	}
+
+	// Set required headers for Docker Registry v2 API
+	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
 
 	// Apply authentication if needed
 	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, fmt.Errorf("GHCR authentication failed for %s: %w", repository, err)
 	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("GHCR API request failed for %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
+	// Enhanced error handling with more specific messages
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyString := string(bodyBytes)
+
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			return nil, fmt.Errorf("GHCR repository not found: %s (URL: %s). Verify the repository exists and is accessible", repository, url)
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("GHCR authentication failed for %s: invalid token or insufficient permissions (URL: %s)", repository, url)
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("GHCR access forbidden for %s: token may lack required permissions (URL: %s)", repository, url)
+		default:
+			return nil, fmt.Errorf("GHCR API request failed for %s with status %d: %s (URL: %s)", repository, resp.StatusCode, bodyString, url)
+		}
 	}
 
 	var result struct {
+		Name string   `json:"name"`
 		Tags []string `json:"tags"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("failed to decode GHCR response for %s: %w", repository, err)
+	}
+
+	if len(result.Tags) == 0 {
+		return nil, fmt.Errorf("no tags found for GHCR repository %s", repository)
 	}
 
 	return result.Tags, nil

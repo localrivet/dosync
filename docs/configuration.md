@@ -62,7 +62,87 @@ DOCKERHUB_USERNAME=youruser
 DOCKERHUB_PASSWORD=yourpassword
 AWS_ACCESS_KEY_ID=yourkey
 AWS_SECRET_ACCESS_KEY=yoursecret
+GITHUB_TOKEN=your_github_personal_access_token
 ```
+
+### GitHub Container Registry (GHCR) Configuration
+
+GHCR has been enhanced with first-class support and proper Docker Registry v2 API authentication. DOSync now uses the OAuth2 Bearer token flow for reliable authentication.
+
+#### Required Token Permissions
+
+Your GitHub Personal Access Token must have the following scopes:
+- **`read:packages`** - Required for reading container images
+- **`repo`** - Required for private repositories (if accessing private images)
+
+#### Basic GHCR Configuration
+
+```yaml
+registry:
+  ghcr:
+    token: "${GITHUB_TOKEN}"      # Required: GitHub Personal Access Token
+    username: "myusername"        # Optional: GitHub username (defaults to token owner)
+    imagePolicy:                  # Optional: Advanced tag selection
+      policy:
+        alphabetical:
+          order: desc
+```
+
+#### Environment Variables
+
+Set your GitHub token in your environment:
+
+```env
+# .env file
+GITHUB_TOKEN=ghp_your_github_personal_access_token_here
+```
+
+#### Advanced GHCR Configuration with Tag Filtering
+
+For repositories with complex tagging schemes:
+
+```yaml
+registry:
+  ghcr:
+    token: "${GITHUB_TOKEN}"
+    username: "myusername"
+    imagePolicy:
+      filterTags:
+        pattern: '^main-(?P<commit>[a-fA-F0-9]+)$'  # Match main-abc1234 tags
+        extract: '$commit'
+      policy:
+        alphabetical:
+          order: desc                               # Latest commit hash
+```
+
+#### GHCR Authentication Improvements
+
+**What's New in v0.1.5:**
+- ✅ **Proper OAuth2 Authentication**: Uses Docker Registry v2 API Bearer token flow
+- ✅ **Enhanced Error Messages**: Clear, actionable error messages with API URLs
+- ✅ **Private Repository Support**: Full support for private GHCR repositories
+- ✅ **Automatic Token Refresh**: Handles token scoping per repository automatically
+
+**Error Message Examples:**
+```
+# Before (v0.1.4 and earlier):
+Error getting tags for ghcr.io repo: API request failed with status code: 404
+
+# After (v0.1.5+):
+GHCR authentication failed for tax-equity/solar-equity-hub: invalid token or insufficient permissions (URL: https://ghcr.io/v2/tax-equity/solar-equity-hub/tags/list)
+```
+
+#### Troubleshooting GHCR
+
+**Authentication Failed:**
+1. Verify your GitHub token has `read:packages` scope
+2. Ensure you have access to the repository/organization
+3. For private repositories, ensure the token has `repo` scope
+
+**Repository Not Found:**
+1. Check the repository exists and is spelled correctly
+2. Verify your GitHub account has access to the repository
+3. For organization repositories, ensure you're a member with appropriate permissions
 
 ## Image Policy Configuration
 

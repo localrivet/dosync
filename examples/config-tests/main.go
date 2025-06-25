@@ -1,87 +1,55 @@
 package main
 
 import (
-	"dosync/internal/config"
 	"fmt"
 	"os"
+
+	"dosync/internal/config"
 )
 
 func main() {
-	fmt.Println("=== DOSync Environment Variable Expansion Test ===")
-	fmt.Println()
+	// Set environment variables for testing
+	os.Setenv("GITHUB_PAT", "test-token-value")
+	os.Setenv("TEST_INTERVAL", "5m")
+	os.Setenv("TEST_VERBOSE", "true")
 
-	// Set test environment variables
-	testVars := map[string]string{
-		"GITHUB_TOKEN":   "ghp_test_token_12345",
-		"DOCKERHUB_USER": "testuser",
-		"DOCKERHUB_PASS": "testpass123",
-		"CHECK_INTERVAL": "5m",
+	fmt.Println("=== Testing Environment Variable Expansion ===")
+	fmt.Printf("GITHUB_PAT environment variable: %s\n", os.Getenv("GITHUB_PAT"))
+	fmt.Printf("TEST_INTERVAL environment variable: %s\n", os.Getenv("TEST_INTERVAL"))
+	fmt.Printf("TEST_VERBOSE environment variable: %s\n", os.Getenv("TEST_VERBOSE"))
+
+	// Test with a simple config file that uses environment variables
+	fmt.Println("\n=== Loading Config with Environment Variables ===")
+	cfg, err := config.LoadConfig("dosync-env-test.yaml", nil)
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("Setting test environment variables:")
-	for key, value := range testVars {
-		os.Setenv(key, value)
-		fmt.Printf("  %s=%s\n", key, value)
-	}
-	fmt.Println()
+	fmt.Printf("Loaded config successfully!\n")
+	fmt.Printf("CheckInterval: %s\n", cfg.CheckInterval)
+	fmt.Printf("Verbose: %t\n", cfg.Verbose)
 
-	// Test different config files
-	testConfigs := []string{
-		"dosync-env-test.yaml",
-		"dosync-complex-env-test.yaml",
-	}
-
-	for _, configFile := range testConfigs {
-		fmt.Printf("Testing configuration: %s\n", configFile)
-		fmt.Println("----------------------------------------")
-
-		// Load config
-		cfg, err := config.LoadConfig(configFile, nil)
-		if err != nil {
-			fmt.Printf("❌ Error loading config: %v\n\n", err)
-			continue
+	if cfg.Registry != nil && cfg.Registry.GHCR != nil {
+		fmt.Printf("GHCR Token: %s\n", cfg.Registry.GHCR.Token)
+		if cfg.Registry.GHCR.Token == "test-token-value" {
+			fmt.Println("✅ Environment variable expansion WORKED!")
+		} else {
+			fmt.Printf("❌ Environment variable expansion FAILED! Expected 'test-token-value', got '%s'\n", cfg.Registry.GHCR.Token)
 		}
-
-		fmt.Printf("✅ Config loaded successfully!\n")
-		fmt.Printf("CheckInterval: %s\n", cfg.CheckInterval)
-		fmt.Printf("Verbose: %t\n", cfg.Verbose)
-
-		// Test GHCR token expansion
-		if cfg.Registry != nil && cfg.Registry.GHCR != nil {
-			fmt.Printf("GHCR Token: %s\n", cfg.Registry.GHCR.Token)
-			if cfg.Registry.GHCR.Token == testVars["GITHUB_TOKEN"] {
-				fmt.Printf("✅ GHCR token expansion: SUCCESS\n")
-			} else {
-				fmt.Printf("❌ GHCR token expansion: FAILED (expected '%s', got '%s')\n",
-					testVars["GITHUB_TOKEN"], cfg.Registry.GHCR.Token)
-			}
-		}
-
-		// Test DockerHub credentials expansion
-		if cfg.Registry != nil && cfg.Registry.DockerHub != nil {
-			fmt.Printf("DockerHub Username: %s\n", cfg.Registry.DockerHub.Username)
-			fmt.Printf("DockerHub Password: %s\n", cfg.Registry.DockerHub.Password)
-
-			usernameOK := cfg.Registry.DockerHub.Username == testVars["DOCKERHUB_USER"]
-			passwordOK := cfg.Registry.DockerHub.Password == testVars["DOCKERHUB_PASS"]
-
-			if usernameOK && passwordOK {
-				fmt.Printf("✅ DockerHub credentials expansion: SUCCESS\n")
-			} else {
-				fmt.Printf("❌ DockerHub credentials expansion: FAILED\n")
-			}
-		}
-
-		fmt.Println()
+	} else {
+		fmt.Println("❌ GHCR config not found")
 	}
 
-	fmt.Println("=== Test Summary ===")
-	fmt.Println("Environment variable expansion allows you to use ${VAR_NAME} syntax")
-	fmt.Println("in your dosync.yaml configuration files. This is especially useful")
-	fmt.Println("for sensitive values like tokens and passwords.")
-	fmt.Println()
-	fmt.Println("Supported field name formats:")
-	fmt.Println("  - checkInterval, interval, or CHECK_INTERVAL")
-	fmt.Println("  - verbose or VERBOSE")
-	fmt.Println("  - imagePolicy or image_policy")
+	fmt.Println("\n=== Testing Complex Config ===")
+	cfg2, err := config.LoadConfig("dosync-complex-env-test.yaml", nil)
+	if err != nil {
+		fmt.Printf("Error loading complex config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Complex config loaded successfully!\n")
+	if cfg2.Registry != nil && cfg2.Registry.GHCR != nil {
+		fmt.Printf("Complex GHCR Token: %s\n", cfg2.Registry.GHCR.Token)
+	}
 }

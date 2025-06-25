@@ -313,6 +313,7 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 			case registry.GHCR:
 				if appCfg.Registry.GHCR != nil {
 					options["token"] = appCfg.Registry.GHCR.Token
+					options["username"] = appCfg.Registry.GHCR.Username
 					imagePolicy = appCfg.Registry.GHCR.ImagePolicy
 				}
 			case registry.GCR:
@@ -361,9 +362,12 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 			fmt.Printf("[Rolling Update] Failed to create registry client for service %s: %v\n", serviceName, err)
 			continue
 		}
-		tags, err := client.GetTags(info.Path)
+
+		// Strip tag from repository path for GetTags call
+		repoPath := registry.StripTagFromPath(info.Path)
+		tags, err := client.GetTags(repoPath)
 		if err != nil {
-			fmt.Printf("[Rolling Update] Error getting tags for %s repo %s: %v\n", info.Type, info.Path, err)
+			fmt.Printf("[Rolling Update] Error getting tags for %s repo %s: %v\n", info.Type, repoPath, err)
 			continue
 		}
 		selectedTag, err := syncer.SelectTagByImagePolicy(tags, imagePolicy)

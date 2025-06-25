@@ -123,6 +123,15 @@ func ParseImageURL(imageURL string) (*RegistryInfo, error) {
 	}
 }
 
+// StripTagFromPath removes the tag portion from a repository path
+// Example: "tax-equity/solar-equity-hub:latest" -> "tax-equity/solar-equity-hub"
+func StripTagFromPath(path string) string {
+	if strings.Contains(path, ":") {
+		return strings.Split(path, ":")[0]
+	}
+	return path
+}
+
 // Example of how to use the ParseImageURL function
 func main() {
 	urls := []string{
