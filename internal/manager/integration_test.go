@@ -24,14 +24,14 @@ func TestEndToEndRollingUpdate(t *testing.T) {
 	}
 
 	// Bring up the test environment
-	cmdUp := exec.Command("docker-compose", "-f", composeFile, "up", "-d", "--remove-orphans")
+	cmdUp := exec.Command("docker", "compose", "-f", composeFile, "up", "-d", "--remove-orphans")
 	cmdUp.Stdout = os.Stdout
 	cmdUp.Stderr = os.Stderr
 	if err := cmdUp.Run(); err != nil {
 		t.Fatalf("Failed to bring up test environment: %v", err)
 	}
 	defer func() {
-		cmdDown := exec.Command("docker-compose", "-f", composeFile, "down", "-v")
+		cmdDown := exec.Command("docker", "compose", "-f", composeFile, "down", "-v")
 		cmdDown.Stdout = os.Stdout
 		cmdDown.Stderr = os.Stderr
 		_ = cmdDown.Run()

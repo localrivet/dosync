@@ -112,12 +112,12 @@ func main() {
 	if len(allReplicas) == 0 {
 		fmt.Println("\n=== No replicas found ===")
 		fmt.Println("To see actual replicas, you need to start Docker containers using:")
-		fmt.Printf("cd %s && docker-compose up -d\n", filepath.Dir(composeFile))
+		fmt.Printf("cd %s && docker compose up -d\n", filepath.Dir(composeFile))
 		fmt.Println("Then run this program again.")
 	} else {
 		// Provide cleanup instructions if replicas were found
 		fmt.Println("\nTo clean up the Docker containers when you're done:")
-		fmt.Printf("cd %s && docker-compose down\n", filepath.Dir(composeFile))
+		fmt.Printf("cd %s && docker compose down\n", filepath.Dir(composeFile))
 	}
 }
 

@@ -83,8 +83,8 @@ func (rc *RollbackControllerImpl) Rollback(service string) error {
 		return fmt.Errorf("failed to restore from backup: %w", err)
 	}
 
-	// Restart the service with docker-compose
-	cmd := execCommand("docker-compose", "-f", rc.Config.ComposeFilePath, "up", "-d", service)
+	// Restart the service with docker compose
+	cmd := execCommand("docker", "compose", "-f", rc.Config.ComposeFilePath, "up", "-d", service)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart service: %s, error: %w", string(output), err)
@@ -126,8 +126,8 @@ func (rc *RollbackControllerImpl) RollbackToVersion(service string, version stri
 		return fmt.Errorf("failed to restore from backup: %w", err)
 	}
 
-	// Restart the service with docker-compose
-	cmd := execCommand("docker-compose", "-f", rc.Config.ComposeFilePath, "up", "-d", service)
+	// Restart the service with docker compose
+	cmd := execCommand("docker", "compose", "-f", rc.Config.ComposeFilePath, "up", "-d", service)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart service: %s, error: %w", string(output), err)

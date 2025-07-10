@@ -19,17 +19,17 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &>/dev/null; then
-    echo -e "${RED}Error: docker-compose command not found${NC}"
-    echo "Please install Docker Compose and try again"
+# Check if Docker Compose is installed (check for modern docker compose command)
+if ! docker compose version &>/dev/null; then
+    echo -e "${RED}Error: docker compose command not found${NC}"
+    echo "Please install Docker Compose v2+ and try again"
     exit 1
 fi
 
 # Function to clean up resources
 function cleanup {
     echo -e "\n${YELLOW}Cleaning up resources...${NC}"
-    docker-compose down
+    docker compose down
 }
 
 # Set up trap to catch Ctrl+C and other termination signals
@@ -45,7 +45,7 @@ fi
 
 # Start Docker Compose services
 echo -e "${YELLOW}Starting Docker Compose services...${NC}"
-docker-compose up -d
+docker compose up -d
 
 # Wait for containers to fully start
 echo -e "${YELLOW}Waiting for containers to start...${NC}"
@@ -60,7 +60,7 @@ echo -e "\n${YELLOW}Would you like to keep the Docker containers running? (y/n)$
 read -r answer
 if [[ "$answer" =~ ^[Nn] ]]; then
     echo -e "${YELLOW}Stopping Docker Compose services...${NC}"
-    docker-compose down
+    docker compose down
     echo -e "${GREEN}Containers stopped successfully${NC}"
     # Remove the trap since we've already handled cleanup
     trap - EXIT
