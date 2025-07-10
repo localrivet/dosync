@@ -39,3 +39,8 @@ prd.md
 .cursor
 .roo
 release/
+
+# Test databases
+*.db
+*.db-shm
+*.db-wal
