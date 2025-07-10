@@ -465,3 +465,124 @@ registry:
 		assert.Equal(t, "testtoken123", c.Registry.DOCR.Password)
 	}
 }
+
+func TestParseVerboseFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		// Standard boolean values
+		{"true", "true", true},
+		{"false", "false", false},
+		{"1", "1", true},
+		{"0", "0", false},
+		{"yes", "yes", true},
+		{"no", "no", false},
+		{"on", "on", true},
+		{"off", "off", false},
+		{"enabled", "enabled", true},
+		{"disabled", "disabled", false},
+
+		// Flag-style values (the main fix)
+		{"--verbose flag", "--verbose", true},
+		{"-v flag", "-v", true},
+		{"verbose word", "verbose", true},
+
+		// Case insensitive
+		{"TRUE uppercase", "TRUE", true},
+		{"--VERBOSE uppercase", "--VERBOSE", true},
+		{"False mixed case", "False", false},
+
+		// With whitespace
+		{"true with spaces", "  true  ", true},
+		{"--verbose with spaces", "  --verbose  ", true},
+
+		// Empty and invalid
+		{"empty string", "", false},
+		{"invalid value", "invalid", false},
+		{"random text", "random", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseVerboseFlag(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestHandleAlternativeFieldNames_Verbose(t *testing.T) {
+	tests := []struct {
+		name        string
+		envVerbose  string
+		expected    bool
+		description string
+	}{
+		{
+			name:        "verbose flag format",
+			envVerbose:  "--verbose",
+			expected:    true,
+			description: "Should handle --verbose flag format",
+		},
+		{
+			name:        "standard true",
+			envVerbose:  "true",
+			expected:    true,
+			description: "Should handle standard boolean true",
+		},
+		{
+			name:        "standard false",
+			envVerbose:  "false",
+			expected:    false,
+			description: "Should handle standard boolean false",
+		},
+		{
+			name:        "numeric true",
+			envVerbose:  "1",
+			expected:    true,
+			description: "Should handle numeric 1 as true",
+		},
+		{
+			name:        "invalid value",
+			envVerbose:  "invalid",
+			expected:    false,
+			description: "Should default to false for invalid values",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up viper with test environment variable
+			v := viper.New()
+			v.Set("VERBOSE", tt.envVerbose)
+
+			// Create config with default values
+			c := &Config{
+				Verbose: false, // Start with default false
+			}
+
+			// Call the function under test
+			handleAlternativeFieldNames(v, c)
+
+			// Assert the result
+			assert.Equal(t, tt.expected, c.Verbose, tt.description)
+		})
+	}
+}
+
+func TestLoadConfig_VerboseEnvironmentVariable(t *testing.T) {
+	// Test that the full config loading process handles --verbose correctly
+
+	// Set environment variable to the problematic value
+	os.Setenv("VERBOSE", "--verbose")
+	defer os.Unsetenv("VERBOSE")
+
+	// This should not panic anymore
+	config, err := LoadConfig("", nil)
+
+	// Assert no error and verbose is true
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+	assert.True(t, config.Verbose)
+}

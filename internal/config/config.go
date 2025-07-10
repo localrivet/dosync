@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
@@ -322,6 +324,9 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 		v.SetDefault("VERBOSE", false)
 		v.SetDefault("verbose", false)
 
+		// Handle special VERBOSE environment variable cases before unmarshaling
+		handleVerboseEnvironmentVariable(v)
+
 		// Try to read config file
 		if err := v.ReadInConfig(); err != nil {
 			// Only fail if a specific config file was requested but not found
@@ -358,6 +363,22 @@ func LoadConfig(configPath string, flags *pflag.FlagSet) (*Config, error) {
 	return cfg, nil
 }
 
+// handleVerboseEnvironmentVariable processes VERBOSE env var before viper unmarshaling
+func handleVerboseEnvironmentVariable(v *viper.Viper) {
+	// Check if VERBOSE environment variable is set
+	if verboseEnv := os.Getenv("VERBOSE"); verboseEnv != "" {
+		// Parse the verbose flag and set it as a boolean in viper
+		verboseBool := parseVerboseFlag(verboseEnv)
+		v.Set("VERBOSE", verboseBool)
+	}
+
+	// Also check lowercase version
+	if verboseEnv := os.Getenv("verbose"); verboseEnv != "" {
+		verboseBool := parseVerboseFlag(verboseEnv)
+		v.Set("verbose", verboseBool)
+	}
+}
+
 // handleAlternativeFieldNames manually handles alternative field names that mapstructure doesn't support
 func handleAlternativeFieldNames(v *viper.Viper, c *Config) {
 	// Handle CheckInterval alternatives
@@ -369,16 +390,42 @@ func handleAlternativeFieldNames(v *viper.Viper, c *Config) {
 		}
 	}
 
-	// Handle Verbose alternatives
+	// Handle Verbose alternatives and special cases
 	if !c.Verbose { // Check if it's still the default
+		// First try to get as boolean (normal case)
 		if val := v.GetBool("verbose"); val {
 			c.Verbose = val
+		} else {
+			// Handle special case where VERBOSE might be set to "--verbose" or similar flag format
+			if verboseStr := v.GetString("VERBOSE"); verboseStr != "" {
+				c.Verbose = parseVerboseFlag(verboseStr)
+			} else if verboseStr := v.GetString("verbose"); verboseStr != "" {
+				c.Verbose = parseVerboseFlag(verboseStr)
+			}
 		}
 	}
 
 	// Handle registry imagePolicy alternatives
 	if c.Registry != nil {
 		handleRegistryImagePolicyAlternatives(v, c.Registry)
+	}
+}
+
+// parseVerboseFlag parses various verbose flag formats and returns a boolean
+func parseVerboseFlag(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "yes", "on", "enabled":
+		return true
+	case "--verbose", "-v", "verbose":
+		return true // Handle flag-style values
+	case "false", "0", "no", "off", "disabled", "":
+		return false
+	default:
+		// Try to parse as boolean, fallback to false if invalid
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			return parsed
+		}
+		return false
 	}
 }
 

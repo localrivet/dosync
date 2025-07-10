@@ -1,0 +1,24 @@
+# Example DOSync configuration demonstrating VERBOSE flag handling
+# This config file shows how to properly set verbose logging
+
+# Basic configuration
+CHECK_INTERVAL: "1m"
+VERBOSE: true  # Use boolean values: true/false, 1/0, yes/no, on/off
+
+# Registry configuration (minimal example)
+registry:
+  dockerhub:
+    username: "testuser"
+    password: "${DOCKERHUB_PASSWORD}"
+
+# Dashboard configuration
+dashboard:
+  enabled: false
+  port: "8080"
+
+# Note: The VERBOSE field can also be set via environment variables:
+# - VERBOSE=true (recommended)
+# - VERBOSE=--verbose (now supported via automatic parsing)
+# - VERBOSE=1
+# - VERBOSE=yes
+# - VERBOSE=on 

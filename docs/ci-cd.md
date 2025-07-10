@@ -145,6 +145,36 @@ See [Configuration](configuration.md) for details on setting up registry credent
 - **Automate DOSync runs** by triggering a deployment or sync job after pushing new images.
 - **Keep your Compose and `dosync.yaml` files in sync** with your image tags and registry configuration.
 
+## Troubleshooting
+
+### DOSync Configuration Errors
+
+**Error: `cannot parse 'VERBOSE' as bool: strconv.ParseBool: parsing "--verbose": invalid syntax`**
+
+This error occurs when the `VERBOSE` environment variable is set to `"--verbose"` instead of a boolean value.
+
+**Solution:** In your Docker Compose file or environment configuration, set:
+```yaml
+environment:
+  - VERBOSE=true  # Use true/false, not --verbose
+```
+
+Or in your `.env` file:
+```
+VERBOSE=true
+```
+
+**Common causes:**
+- Setting `VERBOSE=--verbose` instead of `VERBOSE=true`
+- Passing command-line flags as environment variables
+- Incorrect environment variable formatting in Docker Compose
+
+**Valid boolean values for DOSync:**
+- `true`, `false`
+- `1`, `0` 
+- `yes`, `no`
+- `on`, `off`
+
 ---
 
 [⬆️ Back to Home](index.md)
