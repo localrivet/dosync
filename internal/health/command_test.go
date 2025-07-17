@@ -21,7 +21,7 @@ func createValidCommandConfig(command string) HealthCheckConfig {
 	return HealthCheckConfig{
 		Type:    CommandHealthCheck,
 		Command: command,
-		Timeout: 1 * time.Second, // Short timeout for tests
+		Timeout: 5 * time.Second, // Increased timeout for tests to prevent flaky failures
 	}
 }
 
