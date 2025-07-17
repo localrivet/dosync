@@ -6,8 +6,10 @@ import (
 	"os"
 	"testing"
 
+	"dosync/internal/replica"
+
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func TestMain(m *testing.M) {
@@ -72,7 +74,7 @@ func TestCheckAndUpdateServices_InvalidFile(t *testing.T) {
 }
 
 func TestUpdateDockerComposeAndRestart_MissingFile(t *testing.T) {
-	err := updateDockerComposeAndRestart("svc", "tag", "nonexistent-file.yml", false)
+	err := replica.UpdateDockerComposeAndRestart("svc", "tag", "nonexistent-file.yml", false)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read docker-compose file")
 }
