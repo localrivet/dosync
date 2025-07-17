@@ -17,8 +17,8 @@ RUN go build -ldflags="-s -w" -trimpath -o dosync .
 # Create final minimal image
 FROM alpine:latest
 
-# Install Docker CLI for container control
-RUN apk add --no-cache docker-cli
+# Install Docker CLI and Docker Compose v2 plugin for container control
+RUN apk add --no-cache docker-cli docker-compose
 
 WORKDIR /app
 
