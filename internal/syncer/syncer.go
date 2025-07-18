@@ -235,6 +235,16 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 		}
 		currentImageTag := extractTagFromImage(service.Image)
 
+		// CRITICAL: Check actual running containers, not just compose file
+		// This prevents state drift where compose file != actual containers
+		actualRunningTag, err := getActualRunningImageTag(serviceName)
+		if err == nil && actualRunningTag != "" {
+			// Use the actual running container tag if available
+			currentImageTag = actualRunningTag
+			logVerbose(verbose, fmt.Sprintf("Service %s: compose file shows %s, actual containers running %s",
+				serviceName, extractTagFromImage(service.Image), actualRunningTag))
+		}
+
 		// CRITICAL: Prevent DOSync from updating itself to avoid version confusion
 		if serviceName == "dosync" {
 			// Check if we're trying to downgrade or update DOSync itself
@@ -283,6 +293,36 @@ func extractTagFromImage(image string) string {
 		return strings.Split(image, ":")[1]
 	}
 	return "latest"
+}
+
+// getActualRunningImageTag inspects actual running containers for a service
+// and returns the image tag they're actually using, preventing state drift
+func getActualRunningImageTag(serviceName string) (string, error) {
+	// Use docker inspect to get running container image
+	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=%s", serviceName), "--format", "{{.Image}}")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect containers for service %s: %w", serviceName, err)
+	}
+
+	output := strings.TrimSpace(stdout.String())
+	if output == "" {
+		return "", fmt.Errorf("no running containers found for service %s", serviceName)
+	}
+
+	// Parse the first (latest) container's image and extract tag
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		image := strings.TrimSpace(lines[0])
+		return extractTagFromImage(image), nil
+	}
+
+	return "", fmt.Errorf("no image found for service %s", serviceName)
 }
 
 // removeUnusedDockerImages prunes unused Docker images using the Docker CLI.

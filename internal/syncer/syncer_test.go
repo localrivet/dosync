@@ -608,3 +608,40 @@ func TestShouldUpdateSemantically(t *testing.T) {
 		})
 	}
 }
+
+func TestGetActualRunningImageTag(t *testing.T) {
+	tests := []struct {
+		name        string
+		serviceName string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "service with running containers",
+			serviceName: "test-service",
+			expectError: false, // May vary based on system state
+			description: "Should attempt to get running container image tag",
+		},
+		{
+			name:        "nonexistent service",
+			serviceName: "nonexistent-service-12345",
+			expectError: true,
+			description: "Should return error for nonexistent service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tag, err := getActualRunningImageTag(tt.serviceName)
+
+			if tt.expectError {
+				assert.Error(t, err, "Expected error for %s", tt.description)
+				assert.Empty(t, tag, "Expected empty tag when error occurs")
+			} else {
+				// Note: This test may pass or fail depending on system state
+				// The important thing is that the function doesn't panic
+				t.Logf("Service %s: tag=%s, err=%v", tt.serviceName, tag, err)
+			}
+		})
+	}
+}
