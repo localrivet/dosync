@@ -457,3 +457,154 @@ func TestSelectTagByImagePolicy(t *testing.T) {
 		assert.Equal(t, "", selected)
 	})
 }
+
+func TestIsSemanticDowngrade(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		selected string
+		want     bool
+		wantErr  bool
+	}{
+		{
+			name:     "v0.1.10 to v0.1.9 is downgrade",
+			current:  "v0.1.10",
+			selected: "v0.1.9",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "v0.1.9 to v0.1.10 is not downgrade",
+			current:  "v0.1.9",
+			selected: "v0.1.10",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "same version is not downgrade",
+			current:  "v0.1.10",
+			selected: "v0.1.10",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "v1.0.0 to v2.0.0 is not downgrade",
+			current:  "v1.0.0",
+			selected: "v2.0.0",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "v2.0.0 to v1.0.0 is downgrade",
+			current:  "v2.0.0",
+			selected: "v1.0.0",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "without v prefix works",
+			current:  "0.1.10",
+			selected: "0.1.9",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "non-semver falls back to string comparison",
+			current:  "main-abc-100",
+			selected: "main-abc-090",
+			want:     true, // "main-abc-090" < "main-abc-100" alphabetically
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := isSemanticDowngrade(tt.current, tt.selected)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got, "isSemanticDowngrade(%q, %q)", tt.current, tt.selected)
+			}
+		})
+	}
+}
+
+func TestShouldUpdateSemantically(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		selected string
+		want     bool
+		wantErr  bool
+	}{
+		{
+			name:     "v0.1.9 to v0.1.10 should update",
+			current:  "v0.1.9",
+			selected: "v0.1.10",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "v0.1.10 to v0.1.9 should not update",
+			current:  "v0.1.10",
+			selected: "v0.1.9",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "same version should not update",
+			current:  "v0.1.10",
+			selected: "v0.1.10",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "v1.0.0 to v2.0.0 should update",
+			current:  "v1.0.0",
+			selected: "v2.0.0",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "v2.0.0 to v1.0.0 should not update",
+			current:  "v2.0.0",
+			selected: "v1.0.0",
+			want:     false,
+			wantErr:  false,
+		},
+		{
+			name:     "without v prefix works",
+			current:  "0.1.9",
+			selected: "0.1.10",
+			want:     true,
+			wantErr:  false,
+		},
+		{
+			name:     "non-semver falls back to string comparison",
+			current:  "main-abc-090",
+			selected: "main-abc-100",
+			want:     true, // "main-abc-100" > "main-abc-090" alphabetically
+			wantErr:  false,
+		},
+		{
+			name:     "non-semver reverse should not update",
+			current:  "main-abc-100",
+			selected: "main-abc-090",
+			want:     false,
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := shouldUpdateSemantically(tt.current, tt.selected)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got, "shouldUpdateSemantically(%q, %q)", tt.current, tt.selected)
+			}
+		})
+	}
+}

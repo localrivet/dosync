@@ -74,11 +74,17 @@ type DashboardConfig struct {
 // Config is the top-level configuration struct for the application
 // Add new sections as needed (e.g., Logging, Deployment, etc.)
 type Config struct {
-	CheckInterval string                  `mapstructure:"CHECK_INTERVAL"`
-	Verbose       bool                    `mapstructure:"VERBOSE"`
-	Rollback      rollback.RollbackConfig `mapstructure:"ROLLBACK"`
-	Registry      *RegistryConfig         `mapstructure:"registry"`
-	Dashboard     DashboardConfig         `mapstructure:"dashboard"`
+	CheckInterval string                    `mapstructure:"CHECK_INTERVAL"`
+	Verbose       bool                      `mapstructure:"VERBOSE"`
+	Rollback      rollback.RollbackConfig   `mapstructure:"ROLLBACK"`
+	Registry      *RegistryConfig           `mapstructure:"registry"`
+	Dashboard     DashboardConfig           `mapstructure:"dashboard"`
+	Services      map[string]*ServiceConfig `mapstructure:"services"`
+}
+
+// ServiceConfig holds service-specific configuration
+type ServiceConfig struct {
+	Skip bool `mapstructure:"skip"` // Skip this service from monitoring
 }
 
 // RegistryConfig holds optional config for all supported registries.

@@ -44,3 +44,5 @@ release/
 *.db
 *.db-shm
 *.db-wal
+
+bugs/

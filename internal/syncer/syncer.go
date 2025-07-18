@@ -124,6 +124,15 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 		if service.Image == "" {
 			continue
 		}
+
+		// Check if service should be skipped (configured in dosync.yaml)
+		if cfg != nil && cfg.Services != nil {
+			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
+				logVerbose(verbose, fmt.Sprintf("Skipping service %s as configured", serviceName))
+				continue
+			}
+		}
+
 		info, err := registry.ParseImageURL(service.Image)
 		if err != nil {
 			logVerbose(verbose, fmt.Sprintf("Could not parse image URL for service %s: %v", serviceName, err), true)
@@ -225,6 +234,21 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			continue
 		}
 		currentImageTag := extractTagFromImage(service.Image)
+
+		// CRITICAL: Prevent DOSync from updating itself to avoid version confusion
+		if serviceName == "dosync" {
+			// Check if we're trying to downgrade or update DOSync itself
+			if isDowngrade, err := isSemanticDowngrade(currentImageTag, selectedTag); err == nil && isDowngrade {
+				logVerbose(verbose, fmt.Sprintf("Skipping service %s: refusing to downgrade from %s to %s", serviceName, currentImageTag, selectedTag))
+				continue
+			}
+			// For DOSync, only update if it's a clear semantic upgrade
+			if shouldUpdate, err := shouldUpdateSemantically(currentImageTag, selectedTag); err != nil || !shouldUpdate {
+				logVerbose(verbose, fmt.Sprintf("Service %s is running appropriate version: %s (available: %s)", serviceName, currentImageTag, selectedTag))
+				continue
+			}
+		}
+
 		if selectedTag != currentImageTag {
 			logVerbose(verbose, fmt.Sprintf("Updating service %s to new tag: %s (current: %s)", serviceName, selectedTag, currentImageTag), true)
 			if err := replica.UpdateDockerComposeAndRestart(serviceName, selectedTag, filePath, verbose); err == nil {
@@ -538,4 +562,42 @@ func parseNumerical(s string) (float64, error) {
 		return float64(i), nil
 	}
 	return strconv.ParseFloat(s, 64)
+}
+
+// isSemanticDowngrade checks if going from current to selected would be a downgrade
+func isSemanticDowngrade(current, selected string) (bool, error) {
+	// Clean version strings (remove 'v' prefix if present)
+	currentVer := strings.TrimPrefix(current, "v")
+	selectedVer := strings.TrimPrefix(selected, "v")
+
+	// Try to parse as semantic versions
+	currentSemver, currentErr := semver.NewVersion(currentVer)
+	selectedSemver, selectedErr := semver.NewVersion(selectedVer)
+
+	// If both are valid semver, compare semantically
+	if currentErr == nil && selectedErr == nil {
+		return selectedSemver.LessThan(currentSemver), nil
+	}
+
+	// If not semver, fall back to string comparison (alphabetical)
+	return selected < current, nil
+}
+
+// shouldUpdateSemantically determines if an update should happen based on semantic versioning
+func shouldUpdateSemantically(current, selected string) (bool, error) {
+	// Clean version strings (remove 'v' prefix if present)
+	currentVer := strings.TrimPrefix(current, "v")
+	selectedVer := strings.TrimPrefix(selected, "v")
+
+	// Try to parse as semantic versions
+	currentSemver, currentErr := semver.NewVersion(currentVer)
+	selectedSemver, selectedErr := semver.NewVersion(selectedVer)
+
+	// If both are valid semver, compare semantically
+	if currentErr == nil && selectedErr == nil {
+		return selectedSemver.GreaterThan(currentSemver), nil
+	}
+
+	// If not semver, fall back to string comparison (alphabetical)
+	return selected > current, nil
 }
