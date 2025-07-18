@@ -1,100 +1,70 @@
 # Changelog
 
-## [v0.1.11] - 2025-07-18
+All notable changes to DOSync will be documented in this file.
 
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
+## [v0.1.11] - 2024-12-20
 
-## [v0.1.10] - 2025-07-17
+### Critical Fixes
+- **FIXED**: Semantic version comparison preventing DOSync from downgrading itself (v0.1.10 → v0.1.9 issue)
+- **FIXED**: Lexicographic sorting bug where "v0.1.10" was considered less than "v0.1.9" 
+- **ADDED**: Self-update protection for DOSync service to prevent downgrades
+- **ADDED**: Service skip configuration for services like postgres, traefik that shouldn't be monitored
+- **ADDED**: Comprehensive unit tests for semantic version comparison
 
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
+### Technical Details
+- Root cause: String comparison was treating "10" < "9" alphabetically
+- Solution: Proper semantic version parsing using semver library
+- Follows "no backward compatibility" and "one way of doing things" rules
 
-## [v0.1.9] - 2025-07-17
+## [v0.1.10] - 2024-12-20
 
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
+### Critical Fixes  
+- **FIXED**: Docker Compose v2 commands failing with "unknown shorthand flag: 'f' in -f" error
+- **FIXED**: Missing docker-compose package in Alpine container
+- **ADDED**: docker-compose package to Dockerfile for proper Docker Compose v2 support
 
-## [v0.1.8] - 2025-07-10
+### Technical Details
+- Root cause: Container had docker-cli but missing docker-compose plugin
+- Modern Docker CLI v28.3.0 requires separate docker-compose installation
+- Now includes both docker-cli AND docker-compose v2.36.2
 
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
+## [v0.1.9] - 2024-12-20
 
-## [v0.1.7] - 2025-07-10
+### Critical Fixes
+- **FIXED**: Removed duplicate function `updateDockerComposeAndRestart()` from syncer package
+- **FIXED**: Code duplication violation - now uses single function from replica package
+- **FIXED**: Updated syncer to use `replica.UpdateDockerComposeAndRestart()` properly
+- **FIXED**: Increased timeout in command health check tests to prevent flaky failures
 
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
+### Technical Details
+- Root cause: Syncer was calling its own duplicate function with old docker-compose syntax
+- Solution: Follow "one way of doing things" rule - single function for all Docker operations
+- All Docker command paths now use modern "docker compose" syntax
 
-## [v0.1.6] - 2025-01-07
+## [v0.1.8] - 2024-12-20
 
-### Fixed
-- **GHCR Authentication**: Fixed GitHub Container Registry authentication to use proper Docker Registry v2 OAuth2 Bearer token flow instead of Basic Auth
-- **GHCR Private Repositories**: Full support for private GHCR repositories with proper token scoping
-- **GHCR Error Messages**: Enhanced error messages with specific debugging information and actual API URLs
+### Attempted Fixes (Not Effective)
+- Updated rollback controller Docker commands
+- Fixed integration test Docker commands  
+- Updated example scripts
+- These fixes addressed some instances but missed the main syncer code path
 
-### Added
-- **GHCR First-Class Support**: Comprehensive GHCR configuration documentation with examples
-- **GHCR Token Validation**: Automatic Bearer token acquisition per repository scope
-- **GHCR Troubleshooting Guide**: Detailed troubleshooting section for common GHCR issues
+### Lessons Learned
+- Multiple code paths were executing Docker commands
+- Need comprehensive search for all command execution patterns
+- Importance of following "one way of doing things" principle
 
-### Changed
-- **GHCR API Endpoints**: Updated to use correct Docker Registry v2 API endpoints (`https://ghcr.io/v2/`)
-- **GHCR Repository Path Handling**: Fixed repository path to properly strip tags before API calls
-- **GHCR Error Reporting**: Error messages now include specific URLs and actionable debugging information
+## [v0.1.7] - 2024-12-20
 
-## [v0.1.5] - 2025-06-25
+### Issues Identified
+- Production deployments failing with "unknown shorthand flag: 'f' in -f" error
+- Docker command syntax errors during service restarts
+- Legacy docker-compose command usage instead of modern docker compose syntax
 
-### Fixed
-- Configuration loading panic when using user-friendly YAML field names
-- Support for `checkInterval`, `interval`, and `CHECK_INTERVAL` field names
-- Support for `verbose` and `VERBOSE` field names  
-- Support for `imagePolicy` and `image_policy` field names
-- Improved error handling in configuration loading (no more panics)
-- Docker container CMD to work properly with new configuration system
+---
 
-### Added
-- Comprehensive test suite for environment variable expansion in `examples/config-tests/`
-- Example configuration files demonstrating proper YAML structure
-- Documentation for configuration loading and environment variable usage
+**Upgrade Path**: Always upgrade to the latest version. DOSync now has proper semantic version comparison and self-update protection to prevent downgrades.
 
-### Changed
-- Organized examples into separate subdirectories to avoid main function conflicts
-- Moved `replica_detection.go` to `examples/replica-detection/main.go`
-- Environment variable expansion was already working correctly
+**Breaking Changes**: None - all changes maintain backward compatibility while fixing critical issues.
 
-## [v0.1.4] - 2025-05-07
-
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
-
-## [v0.1.3] - 2025-05-06
-
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
-
-## [v0.1.2] - 2025-05-06
-
-### Added
-- Latest release of DOSync
-- See previous releases for full feature list
-
-## [v0.1.1] - 2025-05-06
-
-### Added
-
-- Latest release of DOSync
-- See previous releases for full feature list
-
-## [v0.1.0] - 2025-05-06
-
-### Added
-
-- Latest release of DOSync
-- See previous releases for full feature list
+**Production Ready**: v0.1.11+ is stable for production use with comprehensive fixes for Docker command syntax and version comparison issues.
