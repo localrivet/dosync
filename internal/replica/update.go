@@ -118,9 +118,9 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 // performRollingUpdate restarts the service with the updated image tag
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
-	
-	// Simple restart - Docker Compose handles everything
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--force-recreate", serviceName)
+
+	// Just restart the service - Docker Compose will use the updated image tag from the file
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
@@ -128,8 +128,6 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 
 	return nil
 }
-
-
 
 // dockerLogin performs docker login using the provided credentials
 func dockerLogin(server, username, password string, verbose bool) error {
