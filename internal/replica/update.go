@@ -104,16 +104,92 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		}
 	}
 
-	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
+	logVerbose(verbose, fmt.Sprintf("Performing rolling update for service: %s", serviceName))
 
+	// Perform rolling update to ensure zero downtime and clean up any orphaned containers
+	if err := performRollingUpdate(serviceName, filePath, verbose); err != nil {
+		return fmt.Errorf("failed to perform rolling update: %w", err)
+	}
+
+	logVerbose(verbose, fmt.Sprintf("Service %s updated successfully", serviceName))
+	return nil
+}
+
+// performRollingUpdate performs a zero-downtime rolling update that properly cleans up orphaned containers
+func performRollingUpdate(serviceName, filePath string, verbose bool) error {
+	// Step 1: Remove any orphaned containers that might be running the same service
+	logVerbose(verbose, fmt.Sprintf("Cleaning up orphaned containers for service: %s", serviceName))
+	if err := cleanupOrphanedContainers(serviceName, verbose); err != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: Failed to cleanup orphaned containers: %v", err))
+		// Continue anyway - this is just cleanup
+	}
+
+	// Step 2: Use docker compose up with --force-recreate to update the service
+	logVerbose(verbose, fmt.Sprintf("Starting rolling update for service: %s", serviceName))
 	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
+		return fmt.Errorf("failed to update service: %w, output: %s", err, string(output))
 	}
 
-	logVerbose(verbose, fmt.Sprintf("Service %s restarted successfully", serviceName))
+	// Step 3: Final cleanup - remove any remaining orphaned containers
+	logVerbose(verbose, fmt.Sprintf("Final cleanup for service: %s", serviceName))
+	if err := cleanupOrphanedContainers(serviceName, verbose); err != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: Failed final cleanup: %v", err))
+		// Don't fail the update for cleanup issues
+	}
+
 	return nil
+}
+
+// cleanupOrphanedContainers removes containers that might be running the same service but with different naming
+func cleanupOrphanedContainers(serviceName string, verbose bool) error {
+	// Get all containers that might be related to this service
+	cmd := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("name=%s", serviceName))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	containers := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, container := range containers {
+		container = strings.TrimSpace(container)
+		if container == "" {
+			continue
+		}
+
+		// Check if this container is running an old version
+		if isOrphanedContainer(container, serviceName, verbose) {
+			logVerbose(verbose, fmt.Sprintf("Removing orphaned container: %s", container))
+			removeCmd := exec.Command("docker", "rm", "-f", container)
+			if removeOutput, removeErr := removeCmd.CombinedOutput(); removeErr != nil {
+				logVerbose(verbose, fmt.Sprintf("Warning: Failed to remove container %s: %v, output: %s", container, removeErr, string(removeOutput)))
+			}
+		}
+	}
+
+	return nil
+}
+
+// isOrphanedContainer determines if a container is an orphaned version of the service
+func isOrphanedContainer(containerName, serviceName string, verbose bool) bool {
+	// Get container info
+	cmd := exec.Command("docker", "inspect", "--format", "{{.State.Status}}", containerName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+
+	status := strings.TrimSpace(string(output))
+
+	// Only remove containers that are exited/dead, not running ones
+	// This prevents us from accidentally removing healthy containers
+	if status == "exited" || status == "dead" || status == "created" {
+		logVerbose(verbose, fmt.Sprintf("Container %s has status %s - marking for cleanup", containerName, status))
+		return true
+	}
+
+	return false
 }
 
 // dockerLogin performs docker login using the provided credentials

@@ -135,7 +135,7 @@ func (rm *ReplicaManager) detectReplicas() error {
 // UpdateReplica updates the given replica to the specified new image tag
 func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 	// Call UpdateDockerComposeAndRestart directly (same package)
-	return UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, false)
+	return UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, false, nil)
 }
 
 // RollbackReplica rolls back the given replica to the previous image/tag

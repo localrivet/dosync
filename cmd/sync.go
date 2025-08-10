@@ -474,7 +474,7 @@ func checkAndUpdateServices(doToken, filePath string) {
 				serviceName, latestImageTag, currentImageTag), true)
 
 			// Update docker-compose.yml and restart the service
-			if err := replica.UpdateDockerComposeAndRestart(serviceName, latestImageTag, filePath, verbose); err == nil {
+			if err := replica.UpdateDockerComposeAndRestart(serviceName, latestImageTag, filePath, verbose, nil); err == nil {
 				removeUnusedDockerImages()
 			} else {
 				logVerbose(fmt.Sprintf("Error updating service %s: %s\n", serviceName, err), true)
