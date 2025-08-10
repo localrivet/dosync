@@ -119,9 +119,13 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
 	
+	// Get project name from file path to match existing infrastructure
+	projectName := filepath.Base(filepath.Dir(filePath))
+	logVerbose(verbose, fmt.Sprintf("Using project context: %s", projectName))
+	
 	// Step 1: Stop and remove old containers for this service
 	logVerbose(verbose, fmt.Sprintf("Stopping old containers for service: %s", serviceName))
-	downCmd := exec.Command("docker", "compose", "-f", filePath, "rm", "-f", "-s", serviceName)
+	downCmd := exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "rm", "-f", "-s", serviceName)
 	if downOutput, downErr := downCmd.CombinedOutput(); downErr != nil {
 		logVerbose(verbose, fmt.Sprintf("Warning: Failed to stop old containers: %v, output: %s", downErr, string(downOutput)))
 		// Continue anyway
@@ -129,7 +133,7 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	
 	// Step 2: Start new containers
 	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	cmd := exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to start service: %w, output: %s", err, string(output))
