@@ -126,7 +126,9 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 
 	// Step 2: Use docker compose up with --force-recreate to update the service
 	logVerbose(verbose, fmt.Sprintf("Starting rolling update for service: %s", serviceName))
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+	// Extract project name from the compose file directory to preserve network naming
+	projectName := getProjectNameFromPath(filePath)
+	cmd := exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to update service: %w, output: %s", err, string(output))
@@ -190,6 +192,24 @@ func isOrphanedContainer(containerName, serviceName string, verbose bool) bool {
 	}
 
 	return false
+}
+
+// getProjectNameFromPath extracts the project name from the compose file path
+// This ensures Docker Compose uses the correct project context for network naming
+func getProjectNameFromPath(filePath string) string {
+	// Get the directory containing the compose file
+	dir := filepath.Dir(filePath)
+	
+	// Use the directory name as the project name
+	// This matches Docker Compose's default behavior
+	projectName := filepath.Base(dir)
+	
+	// Sanitize the project name (Docker Compose requirements)
+	// Convert to lowercase and replace invalid characters
+	projectName = strings.ToLower(projectName)
+	projectName = regexp.MustCompile(`[^a-z0-9-_]`).ReplaceAllString(projectName, "-")
+	
+	return projectName
 }
 
 // dockerLogin performs docker login using the provided credentials
