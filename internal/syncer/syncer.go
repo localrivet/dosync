@@ -225,6 +225,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			continue
 		}
 		logVerbose(verbose, fmt.Sprintf("Found %d tags for %s repo '%s'", len(tags), info.Type, repoPath))
+		logVerbose(verbose, fmt.Sprintf("Available tags: %v", tags), true)
 		selectedTag, err := SelectTagByImagePolicy(tags, imagePolicy)
 		if err != nil {
 			logVerbose(verbose, fmt.Sprintf("ImagePolicy error for %s repo '%s': %v", info.Type, repoPath, err), true)
@@ -234,6 +235,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			logVerbose(verbose, fmt.Sprintf("No matching tags found for %s repo '%s', skipping", info.Type, repoPath), true)
 			continue
 		}
+		logVerbose(verbose, fmt.Sprintf("Selected tag: %s (imagePolicy: %+v)", selectedTag, imagePolicy), true)
 		currentImageTag := extractTagFromImage(service.Image)
 
 		// CRITICAL: Check actual running containers, not just compose file
@@ -262,7 +264,11 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 
 		if selectedTag != currentImageTag {
 			logVerbose(verbose, fmt.Sprintf("Updating service %s to new tag: %s (current: %s)", serviceName, selectedTag, currentImageTag), true)
-			if err := replica.UpdateDockerComposeAndRestart(serviceName, selectedTag, filePath, verbose); err == nil {
+
+			// Create registry authentication for Docker login
+			registryAuth := createRegistryAuth(info.Type, cfg)
+
+			if err := replica.UpdateDockerComposeAndRestart(serviceName, selectedTag, filePath, verbose, registryAuth); err == nil {
 				removeUnusedDockerImages(verbose)
 			} else {
 				logVerbose(verbose, fmt.Sprintf("Error updating service %s: %s", serviceName, err), true)
@@ -469,6 +475,96 @@ func SelectTagByImagePolicy(tags []string, policy *config.ImagePolicy) (string, 
 		}
 	}
 	return max, nil
+}
+
+// createRegistryAuth creates registry authentication parameters for Docker login
+func createRegistryAuth(regType registry.RegistryType, cfg *config.Config) *replica.RegistryAuth {
+	if cfg == nil || cfg.Registry == nil {
+		return nil
+	}
+
+	switch regType {
+	case registry.GHCR:
+		if cfg.Registry.GHCR != nil && cfg.Registry.GHCR.Token != "" {
+			username := cfg.Registry.GHCR.Username
+			if username == "" {
+				username = "oauth2" // For GHCR, username can be anything when using token
+			}
+			return &replica.RegistryAuth{
+				Server:   "ghcr.io",
+				Username: username,
+				Password: cfg.Registry.GHCR.Token,
+			}
+		}
+
+	case registry.DockerHub:
+		if cfg.Registry.DockerHub != nil && cfg.Registry.DockerHub.Username != "" && cfg.Registry.DockerHub.Password != "" {
+			return &replica.RegistryAuth{
+				Server:   "index.docker.io",
+				Username: cfg.Registry.DockerHub.Username,
+				Password: cfg.Registry.DockerHub.Password,
+			}
+		}
+
+	case registry.DOCR:
+		if cfg.Registry.DOCR != nil && cfg.Registry.DOCR.Token != "" {
+			username := cfg.Registry.DOCR.Username
+			if username == "" {
+				username = "oauth2"
+			}
+			return &replica.RegistryAuth{
+				Server:   "registry.digitalocean.com",
+				Username: username,
+				Password: cfg.Registry.DOCR.Token,
+			}
+		}
+
+	case registry.Harbor:
+		if cfg.Registry.Harbor != nil && cfg.Registry.Harbor.Username != "" && cfg.Registry.Harbor.Password != "" {
+			server := cfg.Registry.Harbor.URL
+			// Remove protocol from server if present
+			if strings.HasPrefix(server, "https://") {
+				server = strings.TrimPrefix(server, "https://")
+			} else if strings.HasPrefix(server, "http://") {
+				server = strings.TrimPrefix(server, "http://")
+			}
+			return &replica.RegistryAuth{
+				Server:   server,
+				Username: cfg.Registry.Harbor.Username,
+				Password: cfg.Registry.Harbor.Password,
+			}
+		}
+
+	case registry.Quay:
+		if cfg.Registry.Quay != nil && cfg.Registry.Quay.Token != "" {
+			return &replica.RegistryAuth{
+				Server:   "quay.io",
+				Username: "oauth2",
+				Password: cfg.Registry.Quay.Token,
+			}
+		}
+
+	case registry.Custom:
+		if cfg.Registry.Custom != nil && cfg.Registry.Custom.Username != "" && cfg.Registry.Custom.Password != "" {
+			server := cfg.Registry.Custom.URL
+			// Remove protocol from server if present
+			if strings.HasPrefix(server, "https://") {
+				server = strings.TrimPrefix(server, "https://")
+			} else if strings.HasPrefix(server, "http://") {
+				server = strings.TrimPrefix(server, "http://")
+			}
+			return &replica.RegistryAuth{
+				Server:   server,
+				Username: cfg.Registry.Custom.Username,
+				Password: cfg.Registry.Custom.Password,
+			}
+		}
+
+		// Note: GCR, ACR, and ECR require more complex authentication flows
+		// that are beyond the scope of simple Docker login
+	}
+
+	return nil
 }
 
 // applySemverPolicy selects a tag based on semver sorting rules

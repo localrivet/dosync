@@ -10,8 +10,15 @@ import (
 	"strings"
 )
 
+// RegistryAuth contains authentication details for Docker registry login
+type RegistryAuth struct {
+	Server   string
+	Username string
+	Password string
+}
+
 // UpdateDockerComposeAndRestart updates the image tag for a service in the compose file and restarts the service using docker compose.
-func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose bool) error {
+func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose bool, registryAuth *RegistryAuth) error {
 	composeDir := filepath.Dir(filePath)
 	backupFile := filepath.Join(composeDir, "docker-compose.backup.yml")
 	input, err := os.ReadFile(filePath)
@@ -89,15 +96,39 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		return err
 	}
 
+	// Authenticate Docker with registry before pulling if auth is provided
+	if registryAuth != nil && registryAuth.Server != "" {
+		if err := dockerLogin(registryAuth.Server, registryAuth.Username, registryAuth.Password, verbose); err != nil {
+			logVerbose(verbose, fmt.Sprintf("Warning: Docker authentication failed for %s: %v", registryAuth.Server, err))
+			// Continue anyway as the image might be public or Docker might already be authenticated
+		}
+	}
+
 	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
 
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
 	}
 
 	logVerbose(verbose, fmt.Sprintf("Service %s restarted successfully", serviceName))
+	return nil
+}
+
+// dockerLogin performs docker login using the provided credentials
+func dockerLogin(server, username, password string, verbose bool) error {
+	logVerbose(verbose, fmt.Sprintf("Authenticating Docker with registry: %s", server))
+
+	cmd := exec.Command("docker", "login", server, "--username", username, "--password-stdin")
+	cmd.Stdin = strings.NewReader(password)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker login failed for %s: %w, output: %s", server, err, string(output))
+	}
+
+	logVerbose(verbose, fmt.Sprintf("Docker authentication successful for %s", server))
 	return nil
 }
 
