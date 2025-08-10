@@ -1,12 +1,37 @@
 # Changelog
 
+## [v0.1.13] - 2025-08-10
+
+### Critical Bug Fixes
+- **FIXED**: Tag selection algorithm now properly handles semantic versioning (v0.1.12 vs v0.1.9)
+- **FIXED**: GHCR authentication and tag retrieval for private repositories  
+- **FIXED**: YAML parsing issue where `$ts` was treated as variable substitution
+- **FIXED**: Repository path parsing - proper tag stripping before API calls
+- **ENHANCED**: Comprehensive debug logging for tag selection process
+
+### Technical Details
+- Updated default tag selection to prefer semantic versioning over lexicographic comparison
+- Fixed GHCR OAuth2 authentication flow for Docker Registry v2 API compliance
+- Corrected `extract` field syntax in ImagePolicy configs (use `'ts'` not `'$ts'`)
+- Enhanced regex pattern matching and value extraction for timestamp-based tags
+- Improved error messages and logging for better debugging
+
+### Breaking Changes
+- ImagePolicy configurations using `extract: '$ts'` must be updated to `extract: 'ts'`
+- This affects all YAML configurations with filterTags extraction
+
+### Updated Documentation
+- Fixed all examples and documentation to use correct extract syntax
+- Updated README.md, docs/configuration.md, and examples/dosync.yaml
+- Added comprehensive troubleshooting guide for tag selection issues
+
+All notable changes to DOSync will be documented in this file.
+
 ## [v0.1.12] - 2025-07-18
 
 ### Added
 - Latest release of DOSync
 - See previous releases for full feature list
-
-All notable changes to DOSync will be documented in this file.
 
 ## [v0.1.11] - 2024-12-20
 
