@@ -24,7 +24,7 @@ registry:
     imagePolicy:
       filterTags:
         pattern: '^main-[a-zA-F0-9]+-(?P<ts>\d+)$' # Match main-hash-timestamp format
-        extract: "$ts" # Extract the timestamp
+        extract: "ts" # Extract the timestamp
       policy:
         numerical:
           order: desc # Highest number (newest)

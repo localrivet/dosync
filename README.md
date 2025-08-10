@@ -232,7 +232,7 @@ Select tags based on numerical values, useful for tags containing timestamps or 
 imagePolicy:
   filterTags:
     pattern: '^main-[a-zA-F0-9]+-(?P<ts>\d+)$' # Match format: main-hash-timestamp
-    extract: '$ts' # Extract the timestamp value
+    extract: 'ts' # Extract the timestamp value
   policy:
     numerical:
       order: desc # Select highest number (newest)
@@ -300,7 +300,7 @@ For tags like `main-abc1234-1718435261`:
 imagePolicy:
   filterTags:
     pattern: '^main-[a-fA-F0-9]+-(?P<ts>\d+)$'
-    extract: '$ts'
+    extract: 'ts'
   policy:
     numerical:
       order: desc # Highest timestamp wins

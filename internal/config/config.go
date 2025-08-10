@@ -106,7 +106,7 @@ type ImagePolicy struct {
 	// FilterTags allows filtering and extracting values from tags using regex.
 	FilterTags *struct {
 		Pattern string `mapstructure:"pattern" yaml:"pattern"` // Regex pattern to filter tags (optional)
-		Extract string `mapstructure:"extract" yaml:"extract"` // Named group to extract (e.g., "$ts" or "$semver") (optional)
+		Extract string `mapstructure:"extract" yaml:"extract"` // Named group to extract (e.g., "ts" or "semver") (optional)
 	} `mapstructure:"filterTags" yaml:"filterTags"`
 
 	// Policy defines the selection strategy: numerical, semver, or alphabetical.

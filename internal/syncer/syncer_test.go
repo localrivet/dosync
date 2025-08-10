@@ -135,7 +135,7 @@ func TestSelectTagByImagePolicy(t *testing.T) {
 				Extract string `mapstructure:"extract" yaml:"extract"`
 			}{
 				Pattern: `^main-[a-z0-9]+-(?P<ts>\\d+)$`,
-				Extract: "$ts",
+				Extract: "ts",
 			},
 			Policy: &struct {
 				Numerical *struct {
@@ -165,7 +165,7 @@ func TestSelectTagByImagePolicy(t *testing.T) {
 				Extract string `mapstructure:"extract" yaml:"extract"`
 			}{
 				Pattern: `^main-[a-z0-9]+-(?P<ts>\\d+)$`,
-				Extract: "$ts",
+				Extract: "ts",
 			},
 			Policy: &struct {
 				Numerical *struct {
@@ -434,7 +434,7 @@ func TestSelectTagByImagePolicy(t *testing.T) {
 				Extract string `mapstructure:"extract" yaml:"extract"`
 			}{
 				Pattern: `^main-[a-z0-9]+-(?P<ts>\\d+)$`,
-				Extract: "$ts",
+				Extract: "ts",
 			},
 			Policy: &struct {
 				Numerical *struct {

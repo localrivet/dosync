@@ -211,7 +211,7 @@ registry:
     imagePolicy:
       filterTags:
         pattern: '^main-[a-fA-F0-9]+-(?P<ts>\d+)$'
-        extract: '$ts'
+        extract: 'ts'
       policy:
         numerical:
           order: desc # Highest timestamp wins

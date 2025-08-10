@@ -218,19 +218,20 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 
 		// Strip tag from repository path for GetTags call
 		repoPath := registry.StripTagFromPath(info.Path)
+		logVerbose(verbose, fmt.Sprintf("Calling GetTags for %s registry with repo path: '%s' (original: '%s')", info.Type, repoPath, info.Path))
 		tags, err := client.GetTags(repoPath)
 		if err != nil {
-			logVerbose(verbose, fmt.Sprintf("Error getting tags for %s repo %s: %v", info.Type, repoPath, err), true)
+			logVerbose(verbose, fmt.Sprintf("Error getting tags for %s repo '%s': %v", info.Type, repoPath, err), true)
 			continue
 		}
-
+		logVerbose(verbose, fmt.Sprintf("Found %d tags for %s repo '%s'", len(tags), info.Type, repoPath))
 		selectedTag, err := SelectTagByImagePolicy(tags, imagePolicy)
 		if err != nil {
-			logVerbose(verbose, fmt.Sprintf("ImagePolicy error for %s repo %s: %v", info.Type, info.Path, err), true)
+			logVerbose(verbose, fmt.Sprintf("ImagePolicy error for %s repo '%s': %v", info.Type, repoPath, err), true)
 			continue
 		}
 		if selectedTag == "" {
-			logVerbose(verbose, fmt.Sprintf("No matching tags found for %s repo %s, skipping", info.Type, info.Path), true)
+			logVerbose(verbose, fmt.Sprintf("No matching tags found for %s repo '%s', skipping", info.Type, repoPath), true)
 			continue
 		}
 		currentImageTag := extractTagFromImage(service.Image)
@@ -357,26 +358,34 @@ func SelectTagByImagePolicy(tags []string, policy *config.ImagePolicy) (string, 
 		return "", nil
 	}
 
-	// Handle case with no policy - use lexicographical fallback
+	// Handle case with no policy - use semantic version fallback when possible
 	if policy == nil || policy.Policy == nil {
-		// Fallback: prefer highest non-pre-release tag, else highest tag
-		var max string
-		var maxRelease string
+		// Fallback: prefer highest semantic version, else lexicographical
+		var maxSemver *semver.Version
+		var maxSemverTag string
+		var maxLexical string
+
 		for i, t := range tags {
-			if i == 0 || t > max {
-				max = t
+			// Track lexicographical max as fallback
+			if i == 0 || t > maxLexical {
+				maxLexical = t
 			}
-			// Try to parse as semver and check if it's a release
-			if v, err := semver.NewVersion(t); err == nil && len(v.Prerelease()) == 0 {
-				if maxRelease == "" || t > maxRelease {
-					maxRelease = t
+
+			// Try to parse as semver (with or without 'v' prefix)
+			cleanTag := strings.TrimPrefix(t, "v")
+			if v, err := semver.NewVersion(cleanTag); err == nil {
+				if maxSemver == nil || v.GreaterThan(maxSemver) {
+					maxSemver = v
+					maxSemverTag = t
 				}
 			}
 		}
-		if maxRelease != "" {
-			return maxRelease, nil
+
+		// Prefer semantic version if we found any valid semver tags
+		if maxSemverTag != "" {
+			return maxSemverTag, nil
 		}
-		return max, nil
+		return maxLexical, nil
 	}
 
 	// Step 1: Filter tags by regex if set

@@ -166,7 +166,7 @@ func TestValidateImagePolicy(t *testing.T) {
 			Extract string `mapstructure:"extract" yaml:"extract"`
 		}{
 			Pattern: `^main-[a-z0-9]+-(?P<ts>\\d+)$`,
-			Extract: "$ts",
+			Extract: "ts",
 		},
 		Policy: &struct {
 			Numerical *struct {
@@ -255,7 +255,7 @@ func TestValidateConfig(t *testing.T) {
 						Extract string `mapstructure:"extract" yaml:"extract"`
 					}{
 						Pattern: `^main-[a-z0-9]+-(?P<ts>\\d+)$`,
-						Extract: "$ts",
+						Extract: "ts",
 					},
 					Policy: &struct {
 						Numerical *struct {
@@ -334,7 +334,7 @@ registry:
     image_policy:
       filterTags:
         pattern: '^main-[a-z0-9]+-(?P<ts>\\d+)$'
-        extract: '$ts'
+        extract: 'ts'
       policy:
         numerical:
           order: desc
