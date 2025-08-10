@@ -115,24 +115,15 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	return nil
 }
 
-// performRollingUpdate performs a simple service restart with the updated image
+// performRollingUpdate restarts the service with the updated image tag
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
 	
-	// Step 1: Stop and remove old containers for this service
-	logVerbose(verbose, fmt.Sprintf("Stopping old containers for service: %s", serviceName))
-	downCmd := exec.Command("docker", "compose", "-f", filePath, "rm", "-f", "-s", serviceName)
-	if downOutput, downErr := downCmd.CombinedOutput(); downErr != nil {
-		logVerbose(verbose, fmt.Sprintf("Warning: Failed to stop old containers: %v, output: %s", downErr, string(downOutput)))
-		// Continue anyway
-	}
-	
-	// Step 2: Start new containers using existing compose context
-	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	// Simple restart - Docker Compose handles everything
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to start service: %w, output: %s", err, string(output))
+		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
 	}
 
 	return nil
