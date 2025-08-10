@@ -115,102 +115,30 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	return nil
 }
 
-// performRollingUpdate performs a zero-downtime rolling update that properly cleans up orphaned containers
+// performRollingUpdate performs a simple service restart with the updated image
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
-	// Step 1: Remove any orphaned containers that might be running the same service
-	logVerbose(verbose, fmt.Sprintf("Cleaning up orphaned containers for service: %s", serviceName))
-	if err := cleanupOrphanedContainers(serviceName, verbose); err != nil {
-		logVerbose(verbose, fmt.Sprintf("Warning: Failed to cleanup orphaned containers: %v", err))
-		// Continue anyway - this is just cleanup
+	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
+	
+	// Step 1: Stop and remove old containers for this service
+	logVerbose(verbose, fmt.Sprintf("Stopping old containers for service: %s", serviceName))
+	downCmd := exec.Command("docker", "compose", "-f", filePath, "rm", "-f", "-s", serviceName)
+	if downOutput, downErr := downCmd.CombinedOutput(); downErr != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: Failed to stop old containers: %v, output: %s", downErr, string(downOutput)))
+		// Continue anyway
 	}
-
-	// Step 2: Use docker compose up with --force-recreate to update the service
-	logVerbose(verbose, fmt.Sprintf("Starting rolling update for service: %s", serviceName))
-	// Extract project name from the compose file directory to preserve network naming
-	projectName := getProjectNameFromPath(filePath)
-	cmd := exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+	
+	// Step 2: Start new containers
+	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to update service: %w, output: %s", err, string(output))
-	}
-
-	// Step 3: Final cleanup - remove any remaining orphaned containers
-	logVerbose(verbose, fmt.Sprintf("Final cleanup for service: %s", serviceName))
-	if err := cleanupOrphanedContainers(serviceName, verbose); err != nil {
-		logVerbose(verbose, fmt.Sprintf("Warning: Failed final cleanup: %v", err))
-		// Don't fail the update for cleanup issues
+		return fmt.Errorf("failed to start service: %w, output: %s", err, string(output))
 	}
 
 	return nil
 }
 
-// cleanupOrphanedContainers removes containers that might be running the same service but with different naming
-func cleanupOrphanedContainers(serviceName string, verbose bool) error {
-	// Get all containers that might be related to this service
-	cmd := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("name=%s", serviceName))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
-	}
 
-	containers := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, container := range containers {
-		container = strings.TrimSpace(container)
-		if container == "" {
-			continue
-		}
-
-		// Check if this container is running an old version
-		if isOrphanedContainer(container, serviceName, verbose) {
-			logVerbose(verbose, fmt.Sprintf("Removing orphaned container: %s", container))
-			removeCmd := exec.Command("docker", "rm", "-f", container)
-			if removeOutput, removeErr := removeCmd.CombinedOutput(); removeErr != nil {
-				logVerbose(verbose, fmt.Sprintf("Warning: Failed to remove container %s: %v, output: %s", container, removeErr, string(removeOutput)))
-			}
-		}
-	}
-
-	return nil
-}
-
-// isOrphanedContainer determines if a container is an orphaned version of the service
-func isOrphanedContainer(containerName, serviceName string, verbose bool) bool {
-	// Get container info
-	cmd := exec.Command("docker", "inspect", "--format", "{{.State.Status}}", containerName)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return false
-	}
-
-	status := strings.TrimSpace(string(output))
-
-	// Only remove containers that are exited/dead, not running ones
-	// This prevents us from accidentally removing healthy containers
-	if status == "exited" || status == "dead" || status == "created" {
-		logVerbose(verbose, fmt.Sprintf("Container %s has status %s - marking for cleanup", containerName, status))
-		return true
-	}
-
-	return false
-}
-
-// getProjectNameFromPath extracts the project name from the compose file path
-// This ensures Docker Compose uses the correct project context for network naming
-func getProjectNameFromPath(filePath string) string {
-	// Get the directory containing the compose file
-	dir := filepath.Dir(filePath)
-	
-	// Use the directory name as the project name
-	// This matches Docker Compose's default behavior
-	projectName := filepath.Base(dir)
-	
-	// Sanitize the project name (Docker Compose requirements)
-	// Convert to lowercase and replace invalid characters
-	projectName = strings.ToLower(projectName)
-	projectName = regexp.MustCompile(`[^a-z0-9-_]`).ReplaceAllString(projectName, "-")
-	
-	return projectName
-}
 
 // dockerLogin performs docker login using the provided credentials
 func dockerLogin(server, username, password string, verbose bool) error {
