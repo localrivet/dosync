@@ -126,7 +126,17 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	
 	// Step 2: Start new containers with updated image
 	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	
+	// Extract project name from existing container names to maintain consistency
+	projectName := extractProjectNameFromExistingContainers(serviceName, verbose)
+	var cmd *exec.Cmd
+	if projectName == "" {
+		logVerbose(verbose, "Could not detect project name, using default docker compose behavior")
+		cmd = exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	} else {
+		logVerbose(verbose, fmt.Sprintf("Using project name: %s", projectName))
+		cmd = exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", serviceName)
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		logVerbose(verbose, "New containers failed to start, restoring original containers")
@@ -283,6 +293,39 @@ func verifyContainersHealthy(serviceName string, verbose bool) error {
 	}
 	
 	return nil
+}
+
+// extractProjectNameFromExistingContainers extracts project name from existing container names
+func extractProjectNameFromExistingContainers(serviceName string, verbose bool) string {
+	logVerbose(verbose, fmt.Sprintf("Extracting project name from existing containers for service: %s", serviceName))
+	
+	// Find containers for this service (including temp ones)
+	cmd := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
+	output, err := cmd.Output()
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Failed to find containers for service %s: %v", serviceName, err))
+		return ""
+	}
+	
+	containerNames := strings.Fields(string(output))
+	for _, name := range containerNames {
+		// Container names follow pattern: projectName-serviceName-replica
+		// e.g., "solar-equity-hub-app-1" -> project: "solar-equity-hub", service: "app", replica: "1"
+		
+		// Remove -tmp suffix if present
+		cleanName := strings.TrimSuffix(name, "-tmp")
+		
+		// Find the service name in the container name
+		serviceIndex := strings.Index(cleanName, "-"+serviceName+"-")
+		if serviceIndex > 0 {
+			projectName := cleanName[:serviceIndex]
+			logVerbose(verbose, fmt.Sprintf("Extracted project name '%s' from container '%s'", projectName, name))
+			return projectName
+		}
+	}
+	
+	logVerbose(verbose, fmt.Sprintf("Could not extract project name from containers for service %s", serviceName))
+	return ""
 }
 
 // removeTemporaryContainers removes containers with -tmp suffix
