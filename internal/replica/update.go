@@ -115,18 +115,199 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	return nil
 }
 
-// performRollingUpdate restarts the service with the updated image tag
+// performRollingUpdate restarts the service with the updated image tag using blue-green deployment
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
+	logVerbose(verbose, fmt.Sprintf("Starting blue-green deployment for service: %s", serviceName))
 	
-	// Simple restart - let docker compose use its default project context
+	// Step 1: Rename existing containers to temporary names
+	if err := renameExistingContainers(serviceName, verbose); err != nil {
+		return fmt.Errorf("failed to rename existing containers: %w", err)
+	}
+	
+	// Step 2: Start new containers with updated image
+	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
 	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
+		logVerbose(verbose, "New containers failed to start, restoring original containers")
+		// Rollback: restore original containers
+		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
+			return fmt.Errorf("failed to start new containers and rollback failed: %w, rollback error: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("failed to start new containers: %w, output: %s", err, string(output))
 	}
 	
-	logVerbose(verbose, fmt.Sprintf("Successfully restarted service: %s", serviceName))
+	// Step 3: Verify new containers are healthy
+	if err := verifyContainersHealthy(serviceName, verbose); err != nil {
+		logVerbose(verbose, "New containers failed health check, rolling back")
+		// Rollback: stop new containers and restore originals
+		stopCmd := exec.Command("docker", "compose", "-f", filePath, "stop", serviceName)
+		stopCmd.Run() // Best effort
+		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
+			return fmt.Errorf("health check failed and rollback failed: %w, rollback error: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("new containers failed health check: %w", err)
+	}
+	
+	// Step 4: Success! Remove the temporary containers
+	if err := removeTemporaryContainers(serviceName, verbose); err != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: failed to cleanup temporary containers: %v", err))
+		// This is not a fatal error
+	}
+	
+	logVerbose(verbose, fmt.Sprintf("Blue-green deployment completed successfully for service: %s", serviceName))
+	return nil
+}
+
+// renameExistingContainers renames all containers for a service to temporary names
+func renameExistingContainers(serviceName string, verbose bool) error {
+	logVerbose(verbose, fmt.Sprintf("Renaming existing containers for service: %s", serviceName))
+	
+	// Find containers for this service
+	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find containers for service %s: %w", serviceName, err)
+	}
+	
+	containerIDs := strings.Fields(string(output))
+	for _, containerID := range containerIDs {
+		// Get current container name
+		nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
+		nameOutput, err := nameCmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to get container name for %s: %w", containerID, err)
+		}
+		
+		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
+		tempName := currentName + "-tmp"
+		
+		// Rename container
+		renameCmd := exec.Command("docker", "rename", containerID, tempName)
+		if err := renameCmd.Run(); err != nil {
+			return fmt.Errorf("failed to rename container %s to %s: %w", currentName, tempName, err)
+		}
+		
+		logVerbose(verbose, fmt.Sprintf("Renamed container %s to %s", currentName, tempName))
+	}
+	
+	return nil
+}
+
+// restoreOriginalContainers restores temporary containers to their original names
+func restoreOriginalContainers(serviceName string, verbose bool) error {
+	logVerbose(verbose, fmt.Sprintf("Restoring original containers for service: %s", serviceName))
+	
+	// Find temporary containers for this service
+	cmd := exec.Command("docker", "ps", "-a", "-q", "--filter", "name=-tmp")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find temporary containers: %w", err)
+	}
+	
+	containerIDs := strings.Fields(string(output))
+	for _, containerID := range containerIDs {
+		// Get current container name
+		nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
+		nameOutput, err := nameCmd.Output()
+		if err != nil {
+			continue // Skip if we can't get the name
+		}
+		
+		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
+		if !strings.HasSuffix(currentName, "-tmp") {
+			continue // Skip if not a temp container
+		}
+		
+		originalName := strings.TrimSuffix(currentName, "-tmp")
+		
+		// Rename back to original
+		renameCmd := exec.Command("docker", "rename", containerID, originalName)
+		if err := renameCmd.Run(); err != nil {
+			logVerbose(verbose, fmt.Sprintf("Warning: failed to restore container %s: %v", currentName, err))
+			continue
+		}
+		
+		// Start the container
+		startCmd := exec.Command("docker", "start", containerID)
+		if err := startCmd.Run(); err != nil {
+			logVerbose(verbose, fmt.Sprintf("Warning: failed to start restored container %s: %v", originalName, err))
+		}
+		
+		logVerbose(verbose, fmt.Sprintf("Restored container %s to %s", currentName, originalName))
+	}
+	
+	return nil
+}
+
+// verifyContainersHealthy checks if new containers are running and healthy
+func verifyContainersHealthy(serviceName string, verbose bool) error {
+	logVerbose(verbose, fmt.Sprintf("Verifying health of new containers for service: %s", serviceName))
+	
+	// Find containers for this service
+	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find containers for service %s: %w", serviceName, err)
+	}
+	
+	containerIDs := strings.Fields(string(output))
+	if len(containerIDs) == 0 {
+		return fmt.Errorf("no running containers found for service %s", serviceName)
+	}
+	
+	for _, containerID := range containerIDs {
+		// Check container status
+		statusCmd := exec.Command("docker", "inspect", "--format", "{{.State.Status}}", containerID)
+		statusOutput, err := statusCmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to check status of container %s: %w", containerID, err)
+		}
+		
+		status := strings.TrimSpace(string(statusOutput))
+		if status != "running" {
+			return fmt.Errorf("container %s is not running (status: %s)", containerID, status)
+		}
+		
+		// Check health if available
+		healthCmd := exec.Command("docker", "inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}", containerID)
+		healthOutput, err := healthCmd.Output()
+		if err == nil {
+			health := strings.TrimSpace(string(healthOutput))
+			if health != "no-healthcheck" && health != "healthy" && health != "starting" {
+				return fmt.Errorf("container %s health check failed (status: %s)", containerID, health)
+			}
+		}
+		
+		logVerbose(verbose, fmt.Sprintf("Container %s is healthy (status: %s)", containerID, status))
+	}
+	
+	return nil
+}
+
+// removeTemporaryContainers removes containers with -tmp suffix
+func removeTemporaryContainers(serviceName string, verbose bool) error {
+	logVerbose(verbose, fmt.Sprintf("Removing temporary containers for service: %s", serviceName))
+	
+	// Find temporary containers
+	cmd := exec.Command("docker", "ps", "-a", "-q", "--filter", "name=-tmp")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find temporary containers: %w", err)
+	}
+	
+	containerIDs := strings.Fields(string(output))
+	for _, containerID := range containerIDs {
+		// Remove container
+		removeCmd := exec.Command("docker", "rm", "-f", containerID)
+		if err := removeCmd.Run(); err != nil {
+			logVerbose(verbose, fmt.Sprintf("Warning: failed to remove temporary container %s: %v", containerID, err))
+			continue
+		}
+		
+		logVerbose(verbose, fmt.Sprintf("Removed temporary container %s", containerID))
+	}
+	
 	return nil
 }
 
