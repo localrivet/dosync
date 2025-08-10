@@ -119,17 +119,14 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Restarting service: %s", serviceName))
 	
-	// Use directory name as project to match existing infrastructure
-	projectName := filepath.Base(filepath.Dir(filePath))
-	logVerbose(verbose, fmt.Sprintf("Using project name: %s", projectName))
-	
-	// Restart using existing project context
-	cmd := exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", serviceName)
+	// Simple restart - let docker compose use its default project context
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart service: %w, output: %s", err, string(output))
 	}
-
+	
+	logVerbose(verbose, fmt.Sprintf("Successfully restarted service: %s", serviceName))
 	return nil
 }
 
