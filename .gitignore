@@ -46,3 +46,16 @@ release/
 *.db-wal
 
 bugs/
+
+# Claude Code documentation (contains implementation details)
+CLAUDE.md
+.claude/
+scripts/
+
+# Docker Compose test files
+docker-compose-test.yaml
+dosync-test.yaml
+
+# Local development files
+*.local.yaml
+*.local.yml

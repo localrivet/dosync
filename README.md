@@ -13,20 +13,88 @@
 
 # DOSync
 
-**DOSync** is a tool that synchronizes Docker Compose services with the latest images from any supported container registry. It automates the process of checking for new image tags, updating your Docker Compose file, and restarting the relevant services to ensure your deployments are always running the latest versions.
+**DOSync** is a production-grade Docker Compose orchestration tool that automates deployments across single servers or multi-server fleets. It synchronizes services with container registries, performs zero-downtime rolling updates, and provides automatic rollback on failures.
+
+**Perfect for teams that choose Docker Compose over Kubernetes for operational simplicity.**
 
 ## Features
 
-- Automatic polling of all major container registries (Docker Hub, GCR, GHCR, ACR, Quay.io, Harbor, DigitalOcean, AWS ECR, custom, etc.) for new image tags
-- Docker Compose file updating with new image tags
-- Service restarting after image updates
-- Docker image pruning to save disk space
-- Backup creation of Docker Compose files before modifications
-- **Intelligent service replica detection** for both scale-based and name-based replicas
-- **Advanced tag selection policies** for controlling which tags to use (semver, numerical, regex)
-- Simple systemd service integration
-- Configurable polling interval
-- **Self-contained container that can update other services in the same Docker Compose file**
+### Production-Grade Deployments
+- **Zero-downtime rolling updates** with health checks and automatic rollback
+- **Multi-server support** - run independent DOSync instances behind a load balancer
+- **Intelligent replica detection** for scale-based and name-based replicas
+- **Service dependency management** - updates services in the correct order
+- **Deployment strategies**: one-at-a-time, percentage, blue-green, canary
+- **Automatic rollback** on health check failures with full history
+
+### Registry & Version Control
+- **All major container registries**: Docker Hub, GHCR, GCR, ACR, ECR, Harbor, Quay, DOCR, custom
+- **Advanced tag policies**: semantic versioning, numerical ordering, regex filters
+- **Version constraints**: deploy only specific ranges (e.g., `>=1.0.0 <2.0.0`)
+- **State drift prevention**: checks actual running containers vs compose file
+
+### Operations & Monitoring
+- **Self-updating**: DOSync can update itself when new versions are available
+- **Backup management**: creates backups before every modification
+- **Metrics & notifications**: SQLite metrics storage, Slack/email/webhook alerts
+- **Web dashboard**: monitor deployments and health across your fleet
+- **Docker Compose as source of truth**: updates your compose file, not just containers
+
+## Why DOSync?
+
+### The Problem: Kubernetes is Overkill for Most Deployments
+
+You don't need Kubernetes complexity when:
+- Your application runs fine on 5-50 servers
+- You value operational simplicity over theoretical scale
+- Your team knows Docker Compose, not k8s manifests
+- You want low infrastructure costs ($10-20/server vs $40+ for k8s nodes)
+
+### The Solution: DOSync + Load Balancer
+
+Run multiple servers with identical Docker Compose files, each with its own DOSync instance:
+
+```
+                Load Balancer
+                     |
+    +----------------+----------------+
+    |                |                |
+Server 1         Server 2         Server 3
+┌─────────┐      ┌─────────┐      ┌─────────┐
+│ DOSync  │      │ DOSync  │      │ DOSync  │
+│ + App   │      │ + App   │      │ + App   │
+│(3 reps) │      │(3 reps) │      │(3 reps) │
+└─────────┘      └─────────┘      └─────────┘
+```
+
+**What you get:**
+- ✅ Zero-downtime deployments across your entire fleet
+- ✅ Automatic rollback if deployments fail
+- ✅ Each server is independent (no single point of failure)
+- ✅ Standard Docker Compose (no new YAML to learn)
+- ✅ Easy debugging (SSH to server, check logs)
+- ✅ Horizontal scaling (add more servers as needed)
+
+### Use Cases
+
+**Single Server (Perfect for):**
+- Side projects and MVPs
+- Internal tools
+- Development/staging environments
+- Small businesses ($50-500k ARR)
+
+**Multi-Server Fleet (Ideal for):**
+- Growing SaaS applications ($500k-5M ARR)
+- High-availability web applications
+- Agencies managing multiple client sites
+- Teams that value "boring technology"
+- 100-10,000 requests/second
+
+**When to use Kubernetes instead:**
+- 100+ servers
+- Complex multi-region deployments
+- Need for service mesh, auto-scaling pods across nodes
+- Enterprise requirements (compliance, vendor support)
 
 ## Installation
 
@@ -552,6 +620,156 @@ cd examples
 ```
 
 For more details, see the [replica package documentation](internal/replica/README.md).
+
+## Multi-Server Deployment
+
+DOSync supports running multiple independent instances across a server fleet without any coordination mechanism. This is perfect for horizontally scaling your application while maintaining operational simplicity.
+
+### Architecture
+
+Each server runs:
+- Identical `docker-compose.yml` file
+- Its own DOSync instance (monitors local Docker daemon)
+- Multiple replicas of each service (via `deploy.replicas`)
+
+A load balancer (Traefik, nginx, Caddy, etc.) routes traffic based on health checks.
+
+### Example Multi-Server Setup
+
+**Step 1: Create docker-compose.yml** (same on all servers)
+
+```yaml
+version: '3.8'
+
+services:
+  dosync:
+    image: localrivet/dosync:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/app/docker-compose.yml
+      - ./backups:/app/backups
+    environment:
+      - GHCR_TOKEN=${GHCR_TOKEN}
+      - SYNC_INTERVAL=2m
+      - SYNC_ROLLING_UPDATE=true
+      - SYNC_STRATEGY=one-at-a-time
+
+  web:
+    image: ghcr.io/yourorg/app:latest
+    deploy:
+      replicas: 3  # Each server runs 3 replicas
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`example.com`)"
+```
+
+**Step 2: Deploy to multiple servers**
+
+```bash
+# On each server (server1, server2, server3, etc.)
+git clone your-infra-repo
+cd your-infra-repo
+docker compose up -d
+```
+
+**Step 3: Configure load balancer**
+
+Example Traefik configuration to distribute traffic:
+
+```yaml
+# traefik.yml
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+```
+
+### How Deployments Work
+
+1. **Push new image**: `docker push ghcr.io/yourorg/app:v2.1.0`
+2. **All DOSync instances detect** the new version within 2 minutes
+3. **Each server performs rolling update**:
+   - Server 1: Updates its 3 replicas one-at-a-time
+   - Server 2: Updates its 3 replicas one-at-a-time
+   - Server 3: Updates its 3 replicas one-at-a-time
+4. **Load balancer monitors health checks**:
+   - Routes traffic only to healthy containers
+   - Automatically removes unhealthy containers from rotation
+5. **Result**: Zero-downtime deployment across entire fleet
+
+### Benefits of Multi-Server DOSync
+
+**vs Single Server:**
+- High availability (servers can fail independently)
+- Horizontal scaling (add servers as traffic grows)
+- Geographic distribution (place servers in different regions)
+
+**vs Kubernetes:**
+- No control plane overhead (no etcd, kube-apiserver, etc.)
+- Each server is independent (failure isolation)
+- Standard Docker Compose (familiar tooling)
+- Much lower costs ($10-20/server vs $40+ for k8s nodes)
+- Simpler operations (SSH to debug, standard logs)
+
+**vs Watchtower:**
+- Rolling updates with health checks (Watchtower just restarts)
+- Automatic rollback on failures (Watchtower has none)
+- Compose file as source of truth (Watchtower doesn't update files)
+- Version control with tag policies (Watchtower only does "latest")
+
+### Scaling Your Fleet
+
+**Start small (1-2 servers):**
+```bash
+# Initial deployment
+2 servers × 3 replicas = 6 total containers
+```
+
+**Scale horizontally (add servers as needed):**
+```bash
+# Add server 3
+3 servers × 3 replicas = 9 total containers
+
+# Add servers 4-5
+5 servers × 3 replicas = 15 total containers
+
+# Adjust replicas per server
+5 servers × 5 replicas = 25 total containers
+```
+
+Each DOSync instance is independent - no configuration changes needed when adding/removing servers.
+
+### Monitoring & Observability
+
+Each server exposes its own metrics and logs:
+
+```bash
+# Check DOSync status on any server
+docker logs dosync
+
+# View deployment history
+ls -lah backups/
+
+# Check service health
+docker ps --filter "label=com.docker.compose.service=web"
+```
+
+For fleet-wide visibility, integrate with:
+- **Prometheus**: Scrape metrics from each server's DOSync instance
+- **Grafana**: Visualize deployments across all servers
+- **Loki**: Centralized log aggregation
+- **Traefik Dashboard**: Real-time traffic and health status
 
 ## License
 
