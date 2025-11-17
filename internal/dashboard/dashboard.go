@@ -337,15 +337,30 @@ func StartDashboard(cfg config.DashboardConfig, collector *metrics.Collector) {
 
 	router := NewRouter()
 
+	// Create Prometheus exporter
+	prometheusExporter := metrics.NewPrometheusExporter(collector)
+
 	// Register routes with middleware
 	router.Handle("GET /dashboard", ipWhitelist(cfg, basicAuth(cfg, dashboardHandler)))
 	router.Handle("GET /api/metrics", ipWhitelist(cfg, basicAuth(cfg, metricsAPIHandler)))
 	router.Handle("GET /api/history", ipWhitelist(cfg, basicAuth(cfg, historyAPIHandler)))
 	router.Handle("GET /api/services", ipWhitelist(cfg, basicAuth(cfg, serviceOptionsHandler)))
-	// Example: router.Handle("POST /api/metrics", somePostHandler)
+
+	// Prometheus metrics endpoint (typically no auth for Prometheus scraping)
+	router.Handle("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		prometheusExporter.ServeHTTP(w, r)
+	})
+
+	// Deployment control endpoints
+	router.Handle("POST /api/controls/pause/{service}", ipWhitelist(cfg, basicAuth(cfg, pauseServiceHandler)))
+	router.Handle("POST /api/controls/resume/{service}", ipWhitelist(cfg, basicAuth(cfg, resumeServiceHandler)))
+	router.Handle("POST /api/controls/approve/{service}", ipWhitelist(cfg, basicAuth(cfg, approveDeploymentHandler)))
+	router.Handle("GET /api/controls/status", ipWhitelist(cfg, basicAuth(cfg, controlsStatusHandler)))
 
 	addr := ":" + port
 	log.Printf("Dashboard running at http://localhost%s/dashboard", addr)
+	log.Printf("Prometheus metrics available at http://localhost%s/metrics", addr)
+	log.Printf("Deployment controls available at http://localhost%s/api/controls/*", addr)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: router,

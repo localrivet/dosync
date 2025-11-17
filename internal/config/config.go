@@ -71,15 +71,57 @@ type DashboardConfig struct {
 	IPWhitelist string `mapstructure:"ip_whitelist"`
 }
 
+// SecretsConfig holds configuration for secret management providers
+type SecretsConfig struct {
+	Enabled bool                   `mapstructure:"enabled"` // Enable secrets management
+	Vault   *VaultSecretsConfig    `mapstructure:"vault"`   // HashiCorp Vault config (optional)
+	AWS     *AWSSecretsConfig      `mapstructure:"aws"`     // AWS Secrets Manager config (optional)
+	GCP     *GCPSecretsConfig      `mapstructure:"gcp"`     // GCP Secret Manager config (optional)
+}
+
+// VaultSecretsConfig holds HashiCorp Vault configuration
+type VaultSecretsConfig struct {
+	Address string `mapstructure:"address"` // Vault server address (e.g., "https://vault.example.com:8200")
+	Token   string `mapstructure:"token"`   // Vault authentication token
+}
+
+// AWSSecretsConfig holds AWS Secrets Manager configuration
+type AWSSecretsConfig struct {
+	Region string `mapstructure:"region"` // AWS region (e.g., "us-east-1")
+}
+
+// GCPSecretsConfig holds GCP Secret Manager configuration
+type GCPSecretsConfig struct {
+	Project string `mapstructure:"project"` // GCP project ID (optional)
+}
+
+// DeploymentControlConfig holds configuration for deployment controls
+type DeploymentControlConfig struct {
+	DeploymentWindows []DeploymentWindow `mapstructure:"deployment_windows"` // Allowed deployment time windows
+	RequireApproval   bool               `mapstructure:"require_approval"`   // Require manual approval for deployments
+	PausedServices    []string           `mapstructure:"paused_services"`    // List of services that are paused
+	DryRun            bool               `mapstructure:"dry_run"`            // Enable dry-run mode (no actual deployments)
+}
+
+// DeploymentWindow defines a time window when deployments are allowed
+type DeploymentWindow struct {
+	Days      []string `mapstructure:"days"`       // Days of week (e.g., ["Mon", "Tue", "Wed", "Thu", "Fri"])
+	StartTime string   `mapstructure:"start_time"` // Start time (e.g., "09:00")
+	EndTime   string   `mapstructure:"end_time"`   // End time (e.g., "17:00")
+	Timezone  string   `mapstructure:"timezone"`   // Timezone (e.g., "America/New_York")
+}
+
 // Config is the top-level configuration struct for the application
 // Add new sections as needed (e.g., Logging, Deployment, etc.)
 type Config struct {
-	CheckInterval string                    `mapstructure:"CHECK_INTERVAL"`
-	Verbose       bool                      `mapstructure:"VERBOSE"`
-	Rollback      rollback.RollbackConfig   `mapstructure:"ROLLBACK"`
-	Registry      *RegistryConfig           `mapstructure:"registry"`
-	Dashboard     DashboardConfig           `mapstructure:"dashboard"`
-	Services      map[string]*ServiceConfig `mapstructure:"services"`
+	CheckInterval      string                       `mapstructure:"CHECK_INTERVAL"`
+	Verbose            bool                         `mapstructure:"VERBOSE"`
+	Rollback           rollback.RollbackConfig      `mapstructure:"ROLLBACK"`
+	Registry           *RegistryConfig              `mapstructure:"registry"`
+	Dashboard          DashboardConfig              `mapstructure:"dashboard"`
+	Services           map[string]*ServiceConfig    `mapstructure:"services"`
+	Secrets            *SecretsConfig               `mapstructure:"secrets"`             // Secrets management config (optional)
+	DeploymentControls *DeploymentControlConfig     `mapstructure:"deployment_controls"` // Deployment control config (optional)
 }
 
 // ServiceConfig holds service-specific configuration
