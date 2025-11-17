@@ -1,14 +1,9 @@
 package cmd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -422,156 +417,10 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 	fmt.Println("[Rolling Update] All services processed.")
 }
 
-func checkAndUpdateServices(doToken, filePath string) {
-	// Reload the docker-compose.yml file
-	composeFile, err := os.ReadFile(filePath)
-	if err != nil {
-		logVerbose(fmt.Sprintf("Failed to read docker-compose file: %s\n", err), true)
-		return
-	}
-
-	var compose DockerCompose
-	err = yaml.Unmarshal(composeFile, &compose)
-	if err != nil {
-		logVerbose(fmt.Sprintf("Failed to unmarshal docker-compose file: %s\n", err), true)
-		return
-	}
-
-	for serviceName, service := range compose.Services {
-		logVerbose(fmt.Sprintf("Processing service: %s with image: %s", serviceName, service.Image))
-
-		if service.Image == "" || !strings.Contains(service.Image, "registry.digitalocean.com") {
-			logVerbose(fmt.Sprintf("Skipping service %s as it does not have a DigitalOcean Registry image.", serviceName))
-			continue
-		}
-
-		// Extract repository info from the image tag
-		registryName, repoName, err := extractDORepositoryInfo(service.Image)
-		if err != nil {
-			logVerbose(fmt.Sprintf("Error extracting repository info for service %s: %s\n", serviceName, err), true)
-			continue
-		}
-
-		logVerbose("Checking latest image tag for repository: " + repoName)
-
-		// Get the latest image tag from DigitalOcean Registry
-		latestImageTag, err := getLatestImageTag(doToken, registryName, repoName)
-		if err != nil {
-			logVerbose(fmt.Sprintf("Error getting latest image tag for repository %s: %s\n", repoName, err), true)
-			continue
-		}
-
-		// Skip if no tag was found (avoid using "latest" explicitly)
-		if latestImageTag == "" {
-			logVerbose(fmt.Sprintf("No timestamp-based tags found for %s, skipping", repoName), true)
-			continue
-		}
-
-		// Compare with current image tag
-		currentImageTag := extractTagFromImage(service.Image)
-		if latestImageTag != currentImageTag {
-			logVerbose(fmt.Sprintf("Updating service %s to new image tag: %s (current: %s)\n",
-				serviceName, latestImageTag, currentImageTag), true)
-
-			// Update docker-compose.yml and restart the service
-			if err := replica.UpdateDockerComposeAndRestart(serviceName, latestImageTag, filePath, verbose, nil); err == nil {
-				removeUnusedDockerImages()
-			} else {
-				logVerbose(fmt.Sprintf("Error updating service %s: %s\n", serviceName, err), true)
-			}
-		} else {
-			logVerbose(fmt.Sprintf("Service %s is already running the latest image tag: %s",
-				serviceName, currentImageTag))
-		}
-	}
-}
-
-func extractDORepositoryInfo(image string) (string, string, error) {
-	logVerbose(fmt.Sprintf("Extracting DigitalOcean repository info from image: %s", image))
-
-	// Format expected: registry.digitalocean.com/registryName/repoName:tag
-	parts := strings.Split(image, "/")
-	if len(parts) < 3 {
-		return "", "", fmt.Errorf("invalid DigitalOcean Registry image format: %s", image)
-	}
-
-	registryName := parts[1]
-	repoNameWithTag := parts[2]
-	repoName := strings.Split(repoNameWithTag, ":")[0] // Remove the tag part
-
-	return registryName, repoName, nil
-}
-
-func getLatestImageTag(doToken, registryName, repoName string) (string, error) {
-	// Create HTTP request to the DigitalOcean API
-	url := fmt.Sprintf("https://api.digitalocean.com/v2/registry/%s/repositories/%s/tags", registryName, repoName)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	// Add authorization header
-	req.Header.Add("Authorization", "Bearer "+doToken)
-	req.Header.Add("Content-Type", "application/json")
-
-	// Make request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	// Parse response
-	var tagResponse DOTagResponse
-	if err := json.Unmarshal(body, &tagResponse); err != nil {
-		return "", err
-	}
-
-	// Find latest tag with timestamp format (main-YYYYMMDDHHMMSS-hash)
-	var latestTime time.Time
-	var latestTag string
-	for _, tag := range tagResponse.Tags {
-		// Look for timestamp-based tags (main-YYYYMMDDHHMMSS-hash)
-		if strings.HasPrefix(tag.Name, "main-") && len(strings.Split(tag.Name, "-")) >= 3 {
-			// Use the LastUpdated time from the API instead of parsing the tag
-			if tag.LastUpdated.After(latestTime) {
-				latestTime = tag.LastUpdated
-				latestTag = tag.Name
-			}
-		}
-	}
-
-	return latestTag, nil
-}
-
 func extractTagFromImage(image string) string {
 	// Assuming image format: registry.digitalocean.com/registryName/repoName:tag
 	if strings.Contains(image, ":") {
 		return strings.Split(image, ":")[1]
 	}
 	return "latest" // Default tag
-}
-
-func removeUnusedDockerImages() {
-	cmd := exec.Command("docker", "image", "prune", "-a", "--force")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		logVerbose(fmt.Sprintf("Error pruning unused Docker images: %v, stderr: %s", err, stderr.String()), true)
-	} else {
-		logVerbose("Unused Docker images pruned successfully.")
-	}
 }

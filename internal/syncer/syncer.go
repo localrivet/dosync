@@ -207,7 +207,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 
 		// Fallback to env vars for tokens if not set in config
 		if info.Type == registry.DOCR && options["token"] == "" {
-			options["token"] = os.Getenv("GITHUB_PAT")
+			options["token"] = os.Getenv("DOCR_TOKEN")
 		}
 
 		client, err := registry.NewRegistryClient(info.Type, options)
