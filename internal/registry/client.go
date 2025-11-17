@@ -4,9 +4,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// doRequestWithRetry executes an HTTP request with exponential backoff retry logic
+// Retries on network errors and 5xx server errors, but not on 4xx client errors
+func doRequestWithRetry(client *http.Client, req *http.Request, maxRetries int) (*http.Response, error) {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Clone the request for each attempt (in case body was read)
+		reqClone := req.Clone(req.Context())
+
+		resp, err := client.Do(reqClone)
+
+		// Success - return immediately
+		if err == nil && resp.StatusCode < 500 {
+			return resp, nil
+		}
+
+		// Store the error
+		if err != nil {
+			lastErr = err
+		} else {
+			// 5xx error - close body and prepare to retry
+			resp.Body.Close()
+			lastErr = fmt.Errorf("server error: status code %d", resp.StatusCode)
+		}
+
+		// Don't retry on the last attempt
+		if attempt < maxRetries {
+			// Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
+			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			time.Sleep(backoff)
+		}
+	}
+
+	return nil, fmt.Errorf("request failed after %d retries: %w", maxRetries, lastErr)
+}
 
 // RegistryClient defines the interface for interacting with container registries
 type RegistryClient interface {
@@ -125,7 +163,7 @@ func (c *DockerHubClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -185,7 +223,7 @@ func (c *GHCRClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("GHCR API request failed for %s: %w", url, err)
 	}
@@ -257,7 +295,7 @@ func (c *DOCRClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -311,7 +349,7 @@ func (c *CustomRegistryClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -383,7 +421,7 @@ func (c *GCRClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -433,7 +471,7 @@ func (c *ACRClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -510,7 +548,7 @@ func (c *HarborClient) GetTags(repository string) ([]string, error) {
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(client, req, 3)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
