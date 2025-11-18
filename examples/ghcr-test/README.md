@@ -5,12 +5,12 @@ This directory contains tests for the improved GitHub Container Registry (GHCR) 
 ## What Was Fixed
 
 ### 1. Authentication Method
-- **Before**: Used `Bearer` token authentication (incorrect)
-- **After**: Uses proper Basic Auth with username and Personal Access Token
+- **Before**: Used complex OAuth2 Bearer token exchange flow (unreliable for private repos)
+- **After**: Uses GitHub PAT directly as Bearer token (same as `docker login ghcr.io`)
 
 ### 2. API Validation
-- **Before**: Called non-existent `https://ghcr.io/token` endpoint
-- **After**: Uses standard Docker Registry v2 API endpoint `https://ghcr.io/v2/`
+- **Before**: Attempted OAuth2 token exchange via `https://ghcr.io/token` endpoint
+- **After**: Uses standard Docker Registry v2 API endpoint `https://ghcr.io/v2/` for validation
 
 ### 3. Error Handling
 - **Before**: Generic "API request failed with status code: 404" 
@@ -54,9 +54,9 @@ registry:
 
 ## Key Improvements
 
-1. **Proper Authentication**: GHCR now uses correct Basic Auth method
-2. **Better Error Messages**: Detailed debugging information for API failures
-3. **Username Support**: Optional username field for explicit user specification
+1. **Simplified Authentication**: GHCR now uses PAT directly as Bearer token (same as Docker)
+2. **Better Error Messages**: Detailed debugging information for API failures including required scopes
+3. **Reliable Private Repo Access**: Works correctly with private GHCR repositories
 4. **Docker Registry v2 Compliance**: Follows standard Docker Registry API specification
 5. **Enhanced Validation**: Proper endpoint validation for authentication testing
 
