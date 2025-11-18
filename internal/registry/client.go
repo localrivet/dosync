@@ -66,6 +66,21 @@ type BasicRegistryClient struct {
 
 // NewRegistryClient creates a registry client for the specified registry type
 func NewRegistryClient(regType RegistryType, options map[string]string) (RegistryClient, error) {
+	// For GHCR and other OCI-compliant registries, use the new universal client
+	// This uses Google's go-containerregistry library which handles all authentication properly
+	if regType == GHCR || regType == GCR || regType == ACR || regType == DockerHub {
+		username := options["username"]
+		password := options["password"]
+
+		// For GHCR, password is the GitHub PAT
+		if regType == GHCR && password == "" {
+			password = options["token"]
+		}
+
+		return NewContainerRegistryClient(username, password)
+	}
+
+	// Legacy implementation for other registry types
 	auth, err := CreateAuthenticator(regType, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create authenticator: %w", err)
