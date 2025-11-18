@@ -65,7 +65,7 @@ func (t *TCPHealthChecker) CheckWithDetails(replica replica.Replica) (HealthChec
 	if t.Config.Port <= 0 {
 		message := fmt.Sprintf("Invalid port configured for TCP health check: %d", t.Config.Port)
 		t.UpdateStatus(false, message)
-		return t.CreateHealthCheckResult(), fmt.Errorf(message)
+		return t.CreateHealthCheckResult(), fmt.Errorf("%s", message)
 	}
 
 	// Construct the address
@@ -85,7 +85,7 @@ func (t *TCPHealthChecker) CheckWithDetails(replica replica.Replica) (HealthChec
 	if err != nil {
 		message := fmt.Sprintf("TCP connection failed to %s: %v", address, err)
 		t.UpdateStatus(false, message)
-		return t.CreateHealthCheckResult(), fmt.Errorf(message)
+		return t.CreateHealthCheckResult(), fmt.Errorf("%s", message)
 	}
 	defer conn.Close()
 

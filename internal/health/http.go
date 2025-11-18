@@ -83,14 +83,14 @@ func (h *HTTPHealthChecker) CheckWithDetails(replica replica.Replica) (HealthChe
 	if err != nil {
 		message := fmt.Sprintf("Failed to create HTTP request for %s: %v", targetURL, err)
 		h.UpdateStatus(false, message)
-		return h.CreateHealthCheckResult(), fmt.Errorf(message)
+		return h.CreateHealthCheckResult(), fmt.Errorf("%s", message)
 	}
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		message := fmt.Sprintf("HTTP request failed for %s: %v", targetURL, err)
 		h.UpdateStatus(false, message)
-		return h.CreateHealthCheckResult(), fmt.Errorf(message)
+		return h.CreateHealthCheckResult(), fmt.Errorf("%s", message)
 	}
 	defer resp.Body.Close()
 

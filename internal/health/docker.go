@@ -100,7 +100,7 @@ func (d *DockerHealthChecker) CheckWithDetails(replica replica.Replica) (HealthC
 			Healthy:   false,
 			Message:   message,
 			Timestamp: time.Now(),
-		}, fmt.Errorf(message)
+		}, fmt.Errorf("%s", message)
 	}
 
 	// Determine the health status based on the Docker health status

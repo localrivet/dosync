@@ -70,7 +70,7 @@ func (c *CommandHealthChecker) CheckWithDetails(replica replica.Replica) (Health
 			Healthy:   false,
 			Message:   message,
 			Timestamp: time.Now(),
-		}, fmt.Errorf(message)
+		}, fmt.Errorf("%s", message)
 	}
 
 	// Check if a command was specified
@@ -81,7 +81,7 @@ func (c *CommandHealthChecker) CheckWithDetails(replica replica.Replica) (Health
 			Healthy:   false,
 			Message:   message,
 			Timestamp: time.Now(),
-		}, fmt.Errorf(message)
+		}, fmt.Errorf("%s", message)
 	}
 
 	// Create context with timeout

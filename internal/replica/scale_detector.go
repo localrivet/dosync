@@ -131,12 +131,16 @@ func (d *ScaleBasedDetector) findScaledServices(composeFile string) (map[string]
 	}
 
 	// Find services with scale property
+	// If no scale or replicas is specified, treat as single replica (scale: 1)
 	scaledServices := make(map[string]int)
 	for name, service := range compose.Services {
 		if service.Scale > 0 {
 			scaledServices[name] = service.Scale
 		} else if service.Deploy.Replicas > 0 {
 			scaledServices[name] = service.Deploy.Replicas
+		} else {
+			// Default: treat services without explicit scale as single replica
+			scaledServices[name] = 1
 		}
 	}
 

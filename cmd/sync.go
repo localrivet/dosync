@@ -263,7 +263,7 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 	}
 
 	// Prepare replica manager
-	replicaManager, err := replica.NewReplicaManager(filePath)
+	replicaManager, err := replica.NewReplicaManagerWithAllDetectors(filePath)
 	if err != nil {
 		fmt.Printf("[Rolling Update] Failed to create replica manager: %v\n", err)
 		return

@@ -37,8 +37,9 @@ services:
 	}
 
 	// Verify the results
-	if len(scaledServices) != 2 {
-		t.Errorf("Expected 2 scaled services, got %d", len(scaledServices))
+	// All services should be detected, even those without explicit scale (defaults to 1)
+	if len(scaledServices) != 3 {
+		t.Errorf("Expected 3 services, got %d", len(scaledServices))
 	}
 
 	if scale, exists := scaledServices["web"]; !exists || scale != 3 {
@@ -49,8 +50,9 @@ services:
 		t.Errorf("Expected db service with scale 2, got %d", scale)
 	}
 
-	if _, exists := scaledServices["redis"]; exists {
-		t.Error("Redis should not be detected as a scaled service")
+	// Redis should be detected with default scale of 1
+	if scale, exists := scaledServices["redis"]; !exists || scale != 1 {
+		t.Errorf("Expected redis service with default scale 1, got %d", scale)
 	}
 }
 
