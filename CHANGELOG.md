@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.3.3] - 2025-11-18
+
+### Fixed
+- **CRITICAL**: Fixed rollback failing due to dependency conflicts
+- **FIXED**: Rollback now uses `--no-deps` flag to avoid recreating dependent services
+- **FIXED**: Prevents "container name already in use" errors during rollback
+
+### Technical Details
+- Root cause: `docker compose up -d app` tried to ensure postgres was running
+- Postgres container already existed with hardcoded name, causing conflict
+- Rollback failed, leaving site with no app container running
+- Solution: Added `--no-deps` flag to rollback commands
+- Modified `internal/rollback/controller.go` in both `Rollback()` and `RollbackToVersion()`
+- Rollback now only restarts the failed service without touching dependencies
+- Site stays up even when deployments fail
+
 ## [v0.3.2] - 2025-11-18
 
 ### Fixed
