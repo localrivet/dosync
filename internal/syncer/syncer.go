@@ -217,7 +217,17 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 		}
 
 		// Strip tag from repository path for GetTags call
+		// For OCI-compliant registries (GHCR, GCR, ACR, DockerHub) using go-containerregistry,
+		// we need to pass the full repository reference including the registry domain
 		repoPath := registry.StripTagFromPath(info.Path)
+
+		// For registries using ContainerRegistryClient, prepend the domain
+		if info.Type == registry.GHCR || info.Type == registry.GCR ||
+		   info.Type == registry.ACR || info.Type == registry.DockerHub {
+			// Construct full repository reference: domain/path
+			repoPath = info.Domain + "/" + repoPath
+		}
+
 		logVerbose(verbose, fmt.Sprintf("Calling GetTags for %s registry with repo path: '%s' (original: '%s')", info.Type, repoPath, info.Path))
 		tags, err := client.GetTags(repoPath)
 		if err != nil {

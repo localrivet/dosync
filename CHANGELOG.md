@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.1.28] - 2025-11-17
+
+### Fixed
+- **CRITICAL**: Fixed GHCR image authentication by preserving full registry path
+- **FIXED**: Docker Hub misidentification for GHCR images (ghcr.io/owner/repo)
+- Updated syncer to pass full repository reference to go-containerregistry library
+
+### Technical Details
+- Root cause: `ParseImageURL()` extracted path only, stripping `ghcr.io/` prefix
+- Library needs full path (e.g., `ghcr.io/localrivet/almatuck.ai`) to determine registry
+- Without prefix, library defaulted to Docker Hub authentication
+- Solution: Reconstruct full repository reference for OCI registries before calling `GetTags()`
+
 ## [v0.1.27] - 2025-11-17
 
 ### Added
