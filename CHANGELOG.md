@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.3.2] - 2025-11-18
+
+### Fixed
+- **CRITICAL**: Fixed health check failure after rolling updates
+- **FIXED**: UpdateReplica now updates container ID after creating new container
+- **FIXED**: Health checks now target the new container instead of the stopped old container
+
+### Technical Details
+- Root cause: After stopping/renaming old container and starting new one, health check still used old container ID
+- Old container no longer existed, causing "No such container" errors
+- Rolling updates detected new images but failed health checks, triggering unnecessary rollbacks
+- Solution: After successful rolling update, fetch and update the Replica's ContainerID to the new container
+- Modified `internal/replica/manager.go:UpdateReplica()` to refresh container ID after update
+- Health checks now correctly verify the new container's status
+
 ## [v0.3.1] - 2025-11-18
 
 ### Fixed

@@ -4,7 +4,12 @@ Copyright © 2025 LocalRivet <github.com/localrivet>
 package replica
 
 import (
+	"context"
 	"fmt"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 )
 
 // ReplicaManager provides a unified API for handling service replicas
@@ -135,7 +140,41 @@ func (rm *ReplicaManager) detectReplicas() error {
 // UpdateReplica updates the given replica to the specified new image tag
 func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 	// Call UpdateDockerComposeAndRestart directly (same package)
-	return UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, false, nil)
+	err := UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, false, nil)
+	if err != nil {
+		return err
+	}
+
+	// After successful update, fetch the new container ID
+	// The rolling update created a new container, so we need to refresh the replica info
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// Find the new container for this service
+	containers, err := cli.ContainerList(context.Background(), container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", fmt.Sprintf("com.docker.compose.service=%s", r.ServiceName)),
+		),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	// Find the running container for this service
+	for _, c := range containers {
+		if c.State == "running" {
+			// Update the replica's container ID to the new one
+			r.ContainerID = c.ID
+			r.Status = c.State
+			return nil
+		}
+	}
+
+	return fmt.Errorf("could not find new running container for service %s after update", r.ServiceName)
 }
 
 // RollbackReplica rolls back the given replica to the previous image/tag
