@@ -99,11 +99,11 @@ func (a *DockerHubAuthenticator) Type() RegistryType {
 }
 
 // GHCRAuthenticator implements authentication for GitHub Container Registry
-// GHCR accepts the GitHub Personal Access Token (PAT) directly as a Bearer token
+// GHCR requires Basic Auth with username and PAT as password
 // This is the same method used by `docker login ghcr.io`
 type GHCRAuthenticator struct {
 	Token    string
-	Username string // Optional, used for Basic Auth fallback
+	Username string // Required for private repositories
 }
 
 func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
@@ -112,9 +112,17 @@ func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
 		return nil
 	}
 
-	// GHCR accepts the PAT directly as a Bearer token
-	// This is the standard Docker Registry v2 authentication method
-	req.Header.Set("Authorization", "Bearer "+a.Token)
+	// GHCR requires Basic Auth: username and PAT as password
+	// This matches the behavior of `docker login ghcr.io -u username -p TOKEN`
+	username := a.Username
+	if username == "" {
+		// Default to token owner's username if not specified
+		// For personal repos, this should be the GitHub username
+		// For org repos, this should be the org name
+		return fmt.Errorf("username is required for GHCR private repositories (use GitHub username or org name)")
+	}
+
+	req.SetBasicAuth(username, a.Token)
 	return nil
 }
 
