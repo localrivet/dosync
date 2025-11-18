@@ -281,6 +281,13 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 	// For each service, orchestrate the rolling update
 	for serviceName, service := range compose.Services {
 		fmt.Printf("[Rolling Update] Checking service: %s\n", serviceName)
+
+		// Check if service should be skipped (configured in dosync.yaml)
+		if serviceConfig, exists := appCfg.Services[serviceName]; exists && serviceConfig.Skip {
+			fmt.Printf("[Rolling Update] Skipping service %s as configured in dosync.yaml\n", serviceName)
+			continue
+		}
+
 		if service.Image == "" {
 			fmt.Printf("[Rolling Update] Service %s has no image, skipping.\n", serviceName)
 			continue
