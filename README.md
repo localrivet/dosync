@@ -771,6 +771,17 @@ For fleet-wide visibility, integrate with:
 - **Loki**: Centralized log aggregation
 - **Traefik Dashboard**: Real-time traffic and health status
 
+## Troubleshooting
+
+Having issues? Check the [Troubleshooting Guide](docs/troubleshooting.md) for common problems and solutions:
+
+- "Stub: would perform rolling update" error
+- "No replica detectors registered" error
+- DOSync keeps restarting
+- Registry authentication failures
+- Services not being updated
+- And more...
+
 ## License
 
 MIT License
