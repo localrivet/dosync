@@ -164,7 +164,14 @@ func (d *ScaleBasedDetector) getContainersByService(scaledServices map[string]in
 	for serviceName := range scaledServices {
 		serviceContainers := make([]types.Container, 0)
 		for _, container := range containers {
-			// Check if this container belongs to the service
+			// Check if this container belongs to the service using Docker Compose labels
+			// This is more reliable than parsing container names, especially when container_name is set
+			if composeService, exists := container.Labels["com.docker.compose.service"]; exists && composeService == serviceName {
+				serviceContainers = append(serviceContainers, container)
+				continue
+			}
+
+			// Fallback: Check container name pattern for backwards compatibility
 			// Docker Compose names containers as: <project>_<service>_<replica_number>
 			for _, name := range container.Names {
 				// Strip leading slash from container name
