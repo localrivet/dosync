@@ -85,7 +85,19 @@ For full documentation on configuration options, see the README.md file.`,
 			return
 		}
 		if rollingCfg.Enabled {
+			// Run rolling update in a continuous loop with the configured interval
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			fmt.Printf("[Rolling Update] Starting continuous rolling update mode with %s interval\n", interval)
+
+			// Run immediately on startup
 			handleRollingUpdate(rollingCfg, filePath)
+
+			// Then run on each tick
+			for range ticker.C {
+				handleRollingUpdate(rollingCfg, filePath)
+			}
 			return
 		}
 
