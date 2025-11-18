@@ -113,7 +113,7 @@ DOSYNC_SERVICE=$(
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker-compose.yml:/app/docker-compose.yml
+      - ./compose.yaml:/app/compose.yaml:ro
 EOF
 )
 

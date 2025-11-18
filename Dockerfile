@@ -36,6 +36,6 @@ RUN mkdir -p /app/backups && chmod 777 /app/backups
 
 ENTRYPOINT ["./dosync"]
 
-# Default command that will automatically detect dosync.yaml if present
-# or use environment variables and defaults
-CMD ["sync", "-f", "/app/docker-compose.yml"] 
+# Default command uses modern compose.yaml filename
+# Override with 'command:' in your compose file if using a different name
+CMD ["sync", "-f", "/app/compose.yaml"] 
