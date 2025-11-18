@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.3.1] - 2025-11-18
+
+### Fixed
+- **CRITICAL**: Fixed port binding conflict during rolling updates
+- **FIXED**: Blue-green deployment now stops containers before renaming to release port bindings
+- **FIXED**: Single-replica services with host port bindings can now update successfully
+
+### Technical Details
+- Root cause: `renameExistingContainers()` renamed containers to `-tmp` suffix but didn't stop them
+- Docker doesn't release port bindings when renaming a running container
+- New containers couldn't start because ports (80, 443, etc.) remained bound to old containers
+- Solution: Added `docker stop` command before `docker rename` in `internal/replica/update.go`
+- Update sequence: Stop old → Rename old → Start new → Verify health → Remove old
+
 ## [v0.3.0] - 2025-11-18
 
 ### Added

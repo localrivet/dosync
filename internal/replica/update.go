@@ -172,14 +172,14 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 // renameExistingContainers renames all containers for a service to temporary names
 func renameExistingContainers(serviceName string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Renaming existing containers for service: %s", serviceName))
-	
+
 	// Find containers for this service
 	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to find containers for service %s: %w", serviceName, err)
 	}
-	
+
 	containerIDs := strings.Fields(string(output))
 	for _, containerID := range containerIDs {
 		// Get current container name
@@ -188,19 +188,27 @@ func renameExistingContainers(serviceName string, verbose bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to get container name for %s: %w", containerID, err)
 		}
-		
+
 		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
 		tempName := currentName + "-tmp"
-		
+
+		// CRITICAL: Stop the container first to release port bindings
+		// Renaming alone doesn't release ports - the container must be stopped
+		stopCmd := exec.Command("docker", "stop", containerID)
+		if err := stopCmd.Run(); err != nil {
+			return fmt.Errorf("failed to stop container %s: %w", currentName, err)
+		}
+		logVerbose(verbose, fmt.Sprintf("Stopped container %s", currentName))
+
 		// Rename container
 		renameCmd := exec.Command("docker", "rename", containerID, tempName)
 		if err := renameCmd.Run(); err != nil {
 			return fmt.Errorf("failed to rename container %s to %s: %w", currentName, tempName, err)
 		}
-		
+
 		logVerbose(verbose, fmt.Sprintf("Renamed container %s to %s", currentName, tempName))
 	}
-	
+
 	return nil
 }
 
