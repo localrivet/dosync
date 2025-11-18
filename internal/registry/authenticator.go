@@ -99,10 +99,11 @@ func (a *DockerHubAuthenticator) Type() RegistryType {
 }
 
 // GHCRAuthenticator implements authentication for GitHub Container Registry
-// GHCR uses Docker Registry v2 OAuth2 authentication flow
+// GHCR accepts the GitHub Personal Access Token (PAT) directly as a Bearer token
+// This is the same method used by `docker login ghcr.io`
 type GHCRAuthenticator struct {
 	Token    string
-	Username string // Optional, defaults to token owner if not provided
+	Username string // Optional, used for Basic Auth fallback
 }
 
 func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
@@ -111,64 +112,10 @@ func (a *GHCRAuthenticator) Authenticate(req *http.Request) error {
 		return nil
 	}
 
-	// For GHCR, we need to get a Bearer token using the Docker Registry v2 OAuth2 flow
-	bearerToken, err := a.getBearerToken(req.URL.Path)
-	if err != nil {
-		return fmt.Errorf("failed to get GHCR bearer token: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	// GHCR accepts the PAT directly as a Bearer token
+	// This is the standard Docker Registry v2 authentication method
+	req.Header.Set("Authorization", "Bearer "+a.Token)
 	return nil
-}
-
-func (a *GHCRAuthenticator) getBearerToken(resourcePath string) (string, error) {
-	// Extract repository from the path (e.g., /v2/tax-equity/solar-equity-hub/tags/list -> tax-equity/solar-equity-hub)
-	pathParts := strings.Split(strings.TrimPrefix(resourcePath, "/v2/"), "/")
-	if len(pathParts) < 2 {
-		return "", fmt.Errorf("invalid resource path: %s", resourcePath)
-	}
-
-	repository := strings.Join(pathParts[:len(pathParts)-2], "/") // Remove the last two parts (like "tags/list")
-	if repository == "" {
-		return "", fmt.Errorf("could not extract repository from path: %s", resourcePath)
-	}
-
-	// GHCR OAuth2 token endpoint
-	tokenURL := fmt.Sprintf("https://ghcr.io/token?service=ghcr.io&scope=repository:%s:pull", repository)
-
-	req, err := http.NewRequest("GET", tokenURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create token request: %w", err)
-	}
-
-	// Use Basic Auth with GitHub credentials to get the Bearer token
-	username := a.Username
-	if username == "" {
-		username = "localrivet" // Default username, but the token is what matters
-	}
-	req.SetBasicAuth(username, a.Token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("token request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tokenResp struct {
-		Token string `json:"token"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", fmt.Errorf("failed to decode token response: %w", err)
-	}
-
-	return tokenResp.Token, nil
 }
 
 func (a *GHCRAuthenticator) Validate() error {
@@ -177,10 +124,28 @@ func (a *GHCRAuthenticator) Validate() error {
 		return nil
 	}
 
-	// Test validation by trying to get a bearer token for a simple repository
-	_, err := a.getBearerToken("/v2/library/hello-world/tags/list")
+	// Test validation by making a request to the GHCR API base endpoint
+	req, err := http.NewRequest("GET", "https://ghcr.io/v2/", nil)
 	if err != nil {
-		return fmt.Errorf("invalid GitHub token for GHCR access: %w", err)
+		return fmt.Errorf("failed to create validation request: %w", err)
+	}
+
+	// Authenticate the request
+	if err := a.Authenticate(req); err != nil {
+		return fmt.Errorf("failed to authenticate validation request: %w", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("validation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for authentication errors
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("invalid GitHub token for GHCR access (status %d): %s. Ensure your PAT has 'read:packages' scope", resp.StatusCode, string(body))
 	}
 
 	return nil
