@@ -1,5 +1,5 @@
 /*
-Copyright © 2024 LocalRivet <github.com/localrivet>
+Copyright © 2025 LocalRivet <github.com/localrivet>
 */
 package strategy
 

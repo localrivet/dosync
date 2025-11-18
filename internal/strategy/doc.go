@@ -1,5 +1,5 @@
 /*
-Copyright © 2024 LocalRivet <github.com/localrivet>
+Copyright © 2025 LocalRivet <github.com/localrivet>
 
 This package provides deployment strategies for updating Docker
 containers in a controlled and configurable manner.
