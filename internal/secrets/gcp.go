@@ -42,15 +42,9 @@ func (g *GCPSecretsProvider) GetSecret(ctx context.Context, secretPath string) (
 		}
 	}
 
-	// Use gcloud CLI to fetch the secret
-	var cmd *exec.Cmd
-	if strings.HasPrefix(fullPath, "projects/") {
-		cmd = exec.CommandContext(ctx, "gcloud", "secrets", "versions", "access",
-			"latest", "--secret", extractSecretName(fullPath), "--format=json")
-	} else {
-		cmd = exec.CommandContext(ctx, "gcloud", "secrets", "versions", "access",
-			"latest", "--secret", extractSecretName(fullPath), "--format=json")
-	}
+	// Use gcloud CLI to fetch the secret (returns raw secret value)
+	cmd := exec.CommandContext(ctx, "gcloud", "secrets", "versions", "access",
+		"latest", "--secret", extractSecretName(fullPath))
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -60,20 +54,7 @@ func (g *GCPSecretsProvider) GetSecret(ctx context.Context, secretPath string) (
 		return "", fmt.Errorf("failed to execute gcloud CLI: %w", err)
 	}
 
-	// Parse the response - gcloud returns the raw secret value with --format=get-value
-	// Let's use a simpler approach
-	cmd2 := exec.CommandContext(ctx, "gcloud", "secrets", "versions", "access",
-		"latest", "--secret", extractSecretName(fullPath))
-
-	output2, err := cmd2.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("gcloud CLI error: %s", string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("failed to execute gcloud CLI: %w", err)
-	}
-
-	return strings.TrimSpace(string(output2)), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // extractSecretName extracts the secret name from a full GCP secret path
