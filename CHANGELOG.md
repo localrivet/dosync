@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.1.29] - 2025-11-17
+
+### Fixed
+- **CRITICAL**: Fixed GHCR authentication for rolling update mode
+- **FIXED**: Missing registry path fix in cmd/sync.go rolling update code path
+- Applied same fix to both syncer.go AND cmd/sync.go
+
+### Technical Details
+- v0.1.28 only fixed syncer.go (simple sync mode)
+- Rolling update mode uses different code path in cmd/sync.go
+- Both paths now reconstruct full repository reference (ghcr.io/owner/repo)
+- Error showed `[Rolling Update]` prefix, indicating cmd/sync.go path was used
+
 ## [v0.1.28] - 2025-11-17
 
 ### Fixed

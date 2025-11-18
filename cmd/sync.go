@@ -359,7 +359,17 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 		}
 
 		// Strip tag from repository path for GetTags call
+		// For OCI-compliant registries (GHCR, GCR, ACR, DockerHub) using go-containerregistry,
+		// we need to pass the full repository reference including the registry domain
 		repoPath := registry.StripTagFromPath(info.Path)
+
+		// For registries using ContainerRegistryClient, prepend the domain
+		if info.Type == registry.GHCR || info.Type == registry.GCR ||
+		   info.Type == registry.ACR || info.Type == registry.DockerHub {
+			// Construct full repository reference: domain/path
+			repoPath = info.Domain + "/" + repoPath
+		}
+
 		tags, err := client.GetTags(repoPath)
 		if err != nil {
 			fmt.Printf("[Rolling Update] Error getting tags for %s repo %s: %v\n", info.Type, repoPath, err)
