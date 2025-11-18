@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.3.4] - 2025-11-18
+
+### Fixed
+- **CRITICAL**: Fixed "could not find new running container" error after updates
+- **FIXED**: UpdateReplica now finds newest container regardless of state
+- **FIXED**: Handles containers in "created", "restarting", or "running" states
+
+### Technical Details
+- Root cause: After UpdateDockerComposeAndRestart, container might not be "running" yet
+- Container could be in "created" or "restarting" state during startup
+- Previous code only looked for c.State == "running", which failed immediately after create
+- Solution: Find newest container by creation timestamp regardless of state
+- Modified `internal/replica/manager.go:UpdateReplica()` to sort by creation time
+- Health check (which happens after) will verify the container becomes healthy
+- Eliminates race condition between container creation and state query
+
 ## [v0.3.3] - 2025-11-18
 
 ### Fixed

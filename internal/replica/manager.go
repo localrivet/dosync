@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -164,17 +165,26 @@ func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	// Find the running container for this service
-	for _, c := range containers {
-		if c.State == "running" {
-			// Update the replica's container ID to the new one
-			r.ContainerID = c.ID
-			r.Status = c.State
-			return nil
+	// Find the newest container for this service (regardless of state)
+	// The container might be "created", "restarting", or "running" immediately after update
+	// We want the most recently created one since it's the result of our update
+	if len(containers) == 0 {
+		return fmt.Errorf("no containers found for service %s after update", r.ServiceName)
+	}
+
+	// Sort by creation time (newest first)
+	var newestContainer *types.Container
+	for i := range containers {
+		c := &containers[i]
+		if newestContainer == nil || c.Created > newestContainer.Created {
+			newestContainer = c
 		}
 	}
 
-	return fmt.Errorf("could not find new running container for service %s after update", r.ServiceName)
+	// Update the replica's container ID to the newest one
+	r.ContainerID = newestContainer.ID
+	r.Status = newestContainer.State
+	return nil
 }
 
 // RollbackReplica rolls back the given replica to the previous image/tag
