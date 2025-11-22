@@ -215,14 +215,48 @@ func renameExistingContainers(serviceName string, verbose bool) error {
 // restoreOriginalContainers restores temporary containers to their original names
 func restoreOriginalContainers(serviceName string, verbose bool) error {
 	logVerbose(verbose, fmt.Sprintf("Restoring original containers for service: %s", serviceName))
-	
-	// Find temporary containers for this service
+
+	// Step 1: CRITICAL - Stop and remove new containers that failed health check
+	// These containers still have port bindings that would conflict with restored containers
+	logVerbose(verbose, fmt.Sprintf("Stopping and removing failed new containers for service: %s", serviceName))
+
+	// Find containers for this service that are NOT temporary (the new failed ones)
+	newCmd := exec.Command("docker", "ps", "-a", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
+	newOutput, err := newCmd.Output()
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: failed to find new containers: %v", err))
+		// Continue anyway - may not be any new containers
+	} else {
+		newContainerIDs := strings.Fields(string(newOutput))
+		for _, containerID := range newContainerIDs {
+			// Check if this is a temp container (skip those)
+			nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
+			nameOutput, err := nameCmd.Output()
+			if err != nil {
+				continue
+			}
+
+			containerName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
+			if strings.HasSuffix(containerName, "-tmp") {
+				continue // Skip temp containers - we'll restore these
+			}
+
+			// This is a new container that failed - remove it to free up ports
+			logVerbose(verbose, fmt.Sprintf("Removing failed new container: %s", containerName))
+			removeCmd := exec.Command("docker", "rm", "-f", containerID)
+			if err := removeCmd.Run(); err != nil {
+				logVerbose(verbose, fmt.Sprintf("Warning: failed to remove container %s: %v", containerName, err))
+			}
+		}
+	}
+
+	// Step 2: Find temporary containers for this service
 	cmd := exec.Command("docker", "ps", "-a", "-q", "--filter", "name=-tmp")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to find temporary containers: %w", err)
 	}
-	
+
 	containerIDs := strings.Fields(string(output))
 	for _, containerID := range containerIDs {
 		// Get current container name
@@ -231,30 +265,30 @@ func restoreOriginalContainers(serviceName string, verbose bool) error {
 		if err != nil {
 			continue // Skip if we can't get the name
 		}
-		
+
 		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
 		if !strings.HasSuffix(currentName, "-tmp") {
 			continue // Skip if not a temp container
 		}
-		
+
 		originalName := strings.TrimSuffix(currentName, "-tmp")
-		
+
 		// Rename back to original
 		renameCmd := exec.Command("docker", "rename", containerID, originalName)
 		if err := renameCmd.Run(); err != nil {
 			logVerbose(verbose, fmt.Sprintf("Warning: failed to restore container %s: %v", currentName, err))
 			continue
 		}
-		
+
 		// Start the container
 		startCmd := exec.Command("docker", "start", containerID)
 		if err := startCmd.Run(); err != nil {
 			logVerbose(verbose, fmt.Sprintf("Warning: failed to start restored container %s: %v", originalName, err))
 		}
-		
+
 		logVerbose(verbose, fmt.Sprintf("Restored container %s to %s", currentName, originalName))
 	}
-	
+
 	return nil
 }
 
