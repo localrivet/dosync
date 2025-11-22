@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -430,20 +429,9 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 		}
 		err = strat.Execute(serviceName, selectedTag)
 		if err != nil {
-			// Check if this is a rollback-already-done error
-			if errors.Is(err, replica.ErrUpdateFailedButRolledBack) {
-				fmt.Printf("[Rolling Update] Update failed for service %s, but service was successfully rolled back to previous version\n", serviceName)
-				continue
-			}
-
 			fmt.Printf("[Rolling Update] Error updating service %s: %v\n", serviceName, err)
-			if cfg.RollbackOnFailure {
-				fmt.Printf("[Rolling Update] Rolling back service %s to previous version...\n", serviceName)
-				err = rollbackController.Rollback(serviceName)
-				if err != nil {
-					fmt.Printf("[Rolling Update] Rollback failed for service %s: %v\n", serviceName, err)
-				}
-			}
+			// The strategy system (internal/strategy/*) handles rollback internally
+			// No need for duplicate rollback logic here
 			continue
 		}
 		fmt.Printf("[Rolling Update] Service %s updated to tag: %s\n", serviceName, selectedTag)

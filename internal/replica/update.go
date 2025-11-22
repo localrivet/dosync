@@ -2,7 +2,6 @@ package replica
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,10 +9,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-// ErrUpdateFailedButRolledBack indicates the update failed but rollback succeeded
-// This prevents duplicate rollback attempts since the service is already healthy
-var ErrUpdateFailedButRolledBack = errors.New("update failed but service successfully rolled back to previous version")
 
 // RegistryAuth contains authentication details for Docker registry login
 type RegistryAuth struct {
@@ -23,6 +18,8 @@ type RegistryAuth struct {
 }
 
 // UpdateDockerComposeAndRestart updates the image tag for a service in the compose file and restarts the service using docker compose.
+// This function ONLY updates the compose file and runs docker compose up.
+// Rolling updates, health checks, and rollback are handled by the strategy system (internal/strategy/*).
 func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose bool, registryAuth *RegistryAuth) error {
 	composeDir := filepath.Dir(filePath)
 	backupFile := filepath.Join(composeDir, "docker-compose.backup.yml")
@@ -109,302 +106,36 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		}
 	}
 
-	logVerbose(verbose, fmt.Sprintf("Performing rolling update for service: %s", serviceName))
+	logVerbose(verbose, fmt.Sprintf("Starting docker compose up for service: %s", serviceName))
 
-	// Perform rolling update to ensure zero downtime and clean up any orphaned containers
-	if err := performRollingUpdate(serviceName, filePath, verbose); err != nil {
-		return fmt.Errorf("failed to perform rolling update: %w", err)
-	}
-
-	logVerbose(verbose, fmt.Sprintf("Service %s updated successfully", serviceName))
-	return nil
-}
-
-// performRollingUpdate restarts the service with the updated image tag using blue-green deployment
-func performRollingUpdate(serviceName, filePath string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Starting blue-green deployment for service: %s", serviceName))
-	
-	// Step 1: Rename existing containers to temporary names
-	if err := renameExistingContainers(serviceName, verbose); err != nil {
-		return fmt.Errorf("failed to rename existing containers: %w", err)
-	}
-	
-	// Step 2: Start new containers with updated image
-	logVerbose(verbose, fmt.Sprintf("Starting new containers for service: %s", serviceName))
-	
-	// Extract project name from existing container names to maintain consistency
-	projectName := extractProjectNameFromExistingContainers(serviceName, verbose)
-	var cmd *exec.Cmd
-	if projectName == "" {
-		logVerbose(verbose, "Could not detect project name, using default docker compose behavior")
-		cmd = exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
-	} else {
-		logVerbose(verbose, fmt.Sprintf("Using project name: %s", projectName))
-		cmd = exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", serviceName)
-	}
+	// Simply run docker compose up to start the new container
+	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logVerbose(verbose, fmt.Sprintf("New containers failed to start: %s", string(output)))
+		logVerbose(verbose, fmt.Sprintf("Docker compose up failed: %s", string(output)))
 		logVerbose(verbose, fmt.Sprintf("Docker compose up error: %v", err))
-		// Rollback: restore original containers
-		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
-			return fmt.Errorf("failed to start new containers: %s, error: %w, rollback failed: %v", string(output), err, rollbackErr)
-		}
-		// Rollback succeeded - return special error to prevent duplicate rollback attempts
-		return ErrUpdateFailedButRolledBack
+		return fmt.Errorf("failed to start service %s: %s, error: %w", serviceName, string(output), err)
 	}
 	logVerbose(verbose, fmt.Sprintf("Docker compose up output: %s", string(output)))
-	
-	// Step 3: Verify new containers are healthy
-	if err := verifyContainersHealthy(serviceName, verbose); err != nil {
-		logVerbose(verbose, "New containers failed health check, rolling back")
-		// Rollback: stop new containers and restore originals
-		stopCmd := exec.Command("docker", "compose", "-f", filePath, "stop", serviceName)
-		stopCmd.Run() // Best effort
-		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
-			return fmt.Errorf("health check failed and rollback failed: %w, rollback error: %v", err, rollbackErr)
-		}
-		// Rollback succeeded - return special error to prevent duplicate rollback attempts
-		logVerbose(verbose, fmt.Sprintf("Successfully rolled back service %s to previous version", serviceName))
-		return ErrUpdateFailedButRolledBack
-	}
-	
-	// Step 4: Success! Remove the temporary containers
-	if err := removeTemporaryContainers(serviceName, verbose); err != nil {
-		logVerbose(verbose, fmt.Sprintf("Warning: failed to cleanup temporary containers: %v", err))
-		// This is not a fatal error
-	}
-	
-	logVerbose(verbose, fmt.Sprintf("Blue-green deployment completed successfully for service: %s", serviceName))
+
+	logVerbose(verbose, fmt.Sprintf("Service %s compose file updated and containers restarted", serviceName))
 	return nil
 }
 
-// renameExistingContainers renames all containers for a service to temporary names
-func renameExistingContainers(serviceName string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Renaming existing containers for service: %s", serviceName))
-
-	// Find containers for this service
-	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to find containers for service %s: %w", serviceName, err)
-	}
-
-	containerIDs := strings.Fields(string(output))
-	for _, containerID := range containerIDs {
-		// Get current container name
-		nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
-		nameOutput, err := nameCmd.Output()
-		if err != nil {
-			return fmt.Errorf("failed to get container name for %s: %w", containerID, err)
-		}
-
-		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
-		tempName := currentName + "-tmp"
-
-		// CRITICAL: Stop the container first to release port bindings
-		// Renaming alone doesn't release ports - the container must be stopped
-		stopCmd := exec.Command("docker", "stop", containerID)
-		if err := stopCmd.Run(); err != nil {
-			return fmt.Errorf("failed to stop container %s: %w", currentName, err)
-		}
-		logVerbose(verbose, fmt.Sprintf("Stopped container %s", currentName))
-
-		// Rename container
-		renameCmd := exec.Command("docker", "rename", containerID, tempName)
-		if err := renameCmd.Run(); err != nil {
-			return fmt.Errorf("failed to rename container %s to %s: %w", currentName, tempName, err)
-		}
-
-		logVerbose(verbose, fmt.Sprintf("Renamed container %s to %s", currentName, tempName))
-	}
-
-	return nil
-}
-
-// restoreOriginalContainers restores temporary containers to their original names
-func restoreOriginalContainers(serviceName string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Restoring original containers for service: %s", serviceName))
-
-	// Step 1: CRITICAL - Stop and remove new containers that failed health check
-	// These containers still have port bindings that would conflict with restored containers
-	logVerbose(verbose, fmt.Sprintf("Stopping and removing failed new containers for service: %s", serviceName))
-
-	// Find containers for this service that are NOT temporary (the new failed ones)
-	newCmd := exec.Command("docker", "ps", "-a", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
-	newOutput, err := newCmd.Output()
-	if err != nil {
-		logVerbose(verbose, fmt.Sprintf("Warning: failed to find new containers: %v", err))
-		// Continue anyway - may not be any new containers
-	} else {
-		newContainerIDs := strings.Fields(string(newOutput))
-		for _, containerID := range newContainerIDs {
-			// Check if this is a temp container (skip those)
-			nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
-			nameOutput, err := nameCmd.Output()
-			if err != nil {
-				continue
-			}
-
-			containerName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
-			if strings.HasSuffix(containerName, "-tmp") {
-				continue // Skip temp containers - we'll restore these
-			}
-
-			// This is a new container that failed - remove it to free up ports
-			logVerbose(verbose, fmt.Sprintf("Removing failed new container: %s", containerName))
-			removeCmd := exec.Command("docker", "rm", "-f", containerID)
-			if err := removeCmd.Run(); err != nil {
-				logVerbose(verbose, fmt.Sprintf("Warning: failed to remove container %s: %v", containerName, err))
-			}
-		}
-	}
-
-	// Step 2: Find temporary containers for this service
-	cmd := exec.Command("docker", "ps", "-a", "-q", "--filter", "name=-tmp")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to find temporary containers: %w", err)
-	}
-
-	containerIDs := strings.Fields(string(output))
-	for _, containerID := range containerIDs {
-		// Get current container name
-		nameCmd := exec.Command("docker", "inspect", "--format", "{{.Name}}", containerID)
-		nameOutput, err := nameCmd.Output()
-		if err != nil {
-			continue // Skip if we can't get the name
-		}
-
-		currentName := strings.TrimSpace(strings.TrimPrefix(string(nameOutput), "/"))
-		if !strings.HasSuffix(currentName, "-tmp") {
-			continue // Skip if not a temp container
-		}
-
-		originalName := strings.TrimSuffix(currentName, "-tmp")
-
-		// Rename back to original
-		renameCmd := exec.Command("docker", "rename", containerID, originalName)
-		if err := renameCmd.Run(); err != nil {
-			logVerbose(verbose, fmt.Sprintf("Warning: failed to restore container %s: %v", currentName, err))
-			continue
-		}
-
-		// Start the container
-		startCmd := exec.Command("docker", "start", containerID)
-		if err := startCmd.Run(); err != nil {
-			logVerbose(verbose, fmt.Sprintf("Warning: failed to start restored container %s: %v", originalName, err))
-		}
-
-		logVerbose(verbose, fmt.Sprintf("Restored container %s to %s", currentName, originalName))
-	}
-
-	return nil
-}
-
-// verifyContainersHealthy checks if new containers are running and healthy
-func verifyContainersHealthy(serviceName string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Verifying health of new containers for service: %s", serviceName))
-	
-	// Find containers for this service
-	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to find containers for service %s: %w", serviceName, err)
-	}
-	
-	containerIDs := strings.Fields(string(output))
-	if len(containerIDs) == 0 {
-		return fmt.Errorf("no running containers found for service %s", serviceName)
-	}
-	
-	for _, containerID := range containerIDs {
-		// Check container status
-		statusCmd := exec.Command("docker", "inspect", "--format", "{{.State.Status}}", containerID)
-		statusOutput, err := statusCmd.Output()
-		if err != nil {
-			return fmt.Errorf("failed to check status of container %s: %w", containerID, err)
-		}
-		
-		status := strings.TrimSpace(string(statusOutput))
-		if status != "running" {
-			return fmt.Errorf("container %s is not running (status: %s)", containerID, status)
-		}
-		
-		// Check health if available
-		healthCmd := exec.Command("docker", "inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}", containerID)
-		healthOutput, err := healthCmd.Output()
-		if err == nil {
-			health := strings.TrimSpace(string(healthOutput))
-			if health != "no-healthcheck" && health != "healthy" && health != "starting" {
-				return fmt.Errorf("container %s health check failed (status: %s)", containerID, health)
-			}
-		}
-		
-		logVerbose(verbose, fmt.Sprintf("Container %s is healthy (status: %s)", containerID, status))
-	}
-	
-	return nil
-}
-
-// extractProjectNameFromExistingContainers extracts project name from existing container names
-func extractProjectNameFromExistingContainers(serviceName string, verbose bool) string {
-	logVerbose(verbose, fmt.Sprintf("Extracting project name from existing containers for service: %s", serviceName))
-	
-	// Find containers for this service (including temp ones)
-	cmd := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("label=com.docker.compose.service=%s", serviceName))
-	output, err := cmd.Output()
-	if err != nil {
-		logVerbose(verbose, fmt.Sprintf("Failed to find containers for service %s: %v", serviceName, err))
-		return ""
-	}
-	
-	containerNames := strings.Fields(string(output))
-	for _, name := range containerNames {
-		// Container names follow pattern: projectName-serviceName-replica
-		// e.g., "solar-equity-hub-app-1" -> project: "solar-equity-hub", service: "app", replica: "1"
-		
-		// Remove -tmp suffix if present
-		cleanName := strings.TrimSuffix(name, "-tmp")
-		
-		// Find the service name in the container name
-		serviceIndex := strings.Index(cleanName, "-"+serviceName+"-")
-		if serviceIndex > 0 {
-			projectName := cleanName[:serviceIndex]
-			logVerbose(verbose, fmt.Sprintf("Extracted project name '%s' from container '%s'", projectName, name))
-			return projectName
-		}
-	}
-	
-	logVerbose(verbose, fmt.Sprintf("Could not extract project name from containers for service %s", serviceName))
-	return ""
-}
-
-// removeTemporaryContainers removes containers with -tmp suffix
-func removeTemporaryContainers(serviceName string, verbose bool) error {
-	logVerbose(verbose, fmt.Sprintf("Removing temporary containers for service: %s", serviceName))
-	
-	// Find temporary containers
-	cmd := exec.Command("docker", "ps", "-a", "-q", "--filter", "name=-tmp")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to find temporary containers: %w", err)
-	}
-	
-	containerIDs := strings.Fields(string(output))
-	for _, containerID := range containerIDs {
-		// Remove container
-		removeCmd := exec.Command("docker", "rm", "-f", containerID)
-		if err := removeCmd.Run(); err != nil {
-			logVerbose(verbose, fmt.Sprintf("Warning: failed to remove temporary container %s: %v", containerID, err))
-			continue
-		}
-		
-		logVerbose(verbose, fmt.Sprintf("Removed temporary container %s", containerID))
-	}
-	
-	return nil
-}
+// REMOVED: performRollingUpdate, renameExistingContainers, restoreOriginalContainers,
+// verifyContainersHealthy, extractProjectNameFromExistingContainers, removeTemporaryContainers
+//
+// These functions implemented a duplicate rolling update system that conflicted with
+// the advanced strategy system in internal/strategy/*.
+//
+// Following the ONE WAY OF DOING THINGS rule, rolling updates are now ONLY handled by:
+// - internal/strategy/* - Rolling update strategies (one-at-a-time, percentage, blue-green, canary)
+// - internal/health/* - Health checks (docker, http, tcp, command)
+// - internal/rollback/* - Rollback and backup management
+//
+// UpdateDockerComposeAndRestart now simply updates the compose file and runs docker compose up.
+// The strategy system handles all the complexity of rolling updates, health checks, and rollback.
 
 // dockerLogin performs docker login using the provided credentials
 func dockerLogin(server, username, password string, verbose bool) error {

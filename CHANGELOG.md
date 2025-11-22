@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.3.9] - 2025-11-21
+
+### Fixed
+- **CRITICAL**: Removed duplicate rolling update systems violating ONE WAY OF DOING THINGS rule
+- **FIXED**: Eliminated ~300 lines of duplicate code from internal/replica/update.go
+- **FIXED**: Removed duplicate health check, rollback, and rolling update logic
+- **SIMPLIFIED**: UpdateDockerComposeAndRestart now only updates compose file and runs docker compose up
+
+### Technical Details
+- Root cause: TWO complete rolling update implementations making debugging impossible
+- Duplicate system in `internal/replica/update.go` conflicted with advanced strategy system
+- Removed functions: performRollingUpdate, renameExistingContainers, restoreOriginalContainers, verifyContainersHealthy, extractProjectNameFromExistingContainers, removeTemporaryContainers
+- Removed ErrUpdateFailedButRolledBack error type
+- Removed duplicate rollback execution in cmd/sync.go
+- Rolling updates now ONLY handled by internal/strategy/* (one-at-a-time, percentage, blue-green, canary)
+- Health checks now ONLY handled by internal/health/* (docker, http, tcp, command)
+- Rollback now ONLY handled by internal/rollback/* (backup management, restore operations)
+- Follows "ONE WAY OF DOING THINGS" rule: only one implementation path, add options to change behavior
+
 ## [v0.3.8] - 2025-11-21
 
 ### Fixed
