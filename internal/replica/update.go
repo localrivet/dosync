@@ -2,6 +2,7 @@ package replica
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,10 @@ import (
 	"regexp"
 	"strings"
 )
+
+// ErrUpdateFailedButRolledBack indicates the update failed but rollback succeeded
+// This prevents duplicate rollback attempts since the service is already healthy
+var ErrUpdateFailedButRolledBack = errors.New("update failed but service successfully rolled back to previous version")
 
 // RegistryAuth contains authentication details for Docker registry login
 type RegistryAuth struct {
@@ -137,14 +142,14 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 		logVerbose(verbose, fmt.Sprintf("Using project name: %s", projectName))
 		cmd = exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", serviceName)
 	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		logVerbose(verbose, "New containers failed to start, restoring original containers")
 		// Rollback: restore original containers
 		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
 			return fmt.Errorf("failed to start new containers and rollback failed: %w, rollback error: %v", err, rollbackErr)
 		}
-		return fmt.Errorf("failed to start new containers: %w, output: %s", err, string(output))
+		// Rollback succeeded - return special error to prevent duplicate rollback attempts
+		return ErrUpdateFailedButRolledBack
 	}
 	
 	// Step 3: Verify new containers are healthy
@@ -156,7 +161,9 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
 			return fmt.Errorf("health check failed and rollback failed: %w, rollback error: %v", err, rollbackErr)
 		}
-		return fmt.Errorf("new containers failed health check: %w", err)
+		// Rollback succeeded - return special error to prevent duplicate rollback attempts
+		logVerbose(verbose, fmt.Sprintf("Successfully rolled back service %s to previous version", serviceName))
+		return ErrUpdateFailedButRolledBack
 	}
 	
 	// Step 4: Success! Remove the temporary containers
