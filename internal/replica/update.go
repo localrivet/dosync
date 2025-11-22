@@ -142,15 +142,18 @@ func performRollingUpdate(serviceName, filePath string, verbose bool) error {
 		logVerbose(verbose, fmt.Sprintf("Using project name: %s", projectName))
 		cmd = exec.Command("docker", "compose", "-f", filePath, "-p", projectName, "up", "-d", "--no-deps", serviceName)
 	}
-	if err := cmd.Run(); err != nil {
-		logVerbose(verbose, "New containers failed to start, restoring original containers")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("New containers failed to start: %s", string(output)))
+		logVerbose(verbose, fmt.Sprintf("Docker compose up error: %v", err))
 		// Rollback: restore original containers
 		if rollbackErr := restoreOriginalContainers(serviceName, verbose); rollbackErr != nil {
-			return fmt.Errorf("failed to start new containers and rollback failed: %w, rollback error: %v", err, rollbackErr)
+			return fmt.Errorf("failed to start new containers: %s, error: %w, rollback failed: %v", string(output), err, rollbackErr)
 		}
 		// Rollback succeeded - return special error to prevent duplicate rollback attempts
 		return ErrUpdateFailedButRolledBack
 	}
+	logVerbose(verbose, fmt.Sprintf("Docker compose up output: %s", string(output)))
 	
 	// Step 3: Verify new containers are healthy
 	if err := verifyContainersHealthy(serviceName, verbose); err != nil {
