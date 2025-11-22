@@ -281,6 +281,8 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 		fmt.Printf("[Rolling Update] Failed to create replica manager: %v\n", err)
 		return
 	}
+	// Enable verbose logging if the global verbose flag is set
+	replicaManager.SetVerbose(verbose)
 
 	// Prepare strategy config
 	strategyCfg := strategy.StrategyConfig{

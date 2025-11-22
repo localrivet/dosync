@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.3.8] - 2025-11-21
+
+### Fixed
+- **CRITICAL**: Fixed verbose logging not being enabled during rolling updates
+- **FIXED**: UpdateReplica now uses verbose flag to show detailed docker compose errors
+- **FIXED**: Added SetVerbose() method to ReplicaManager to propagate verbose flag
+- **FIXED**: cmd/sync.go now enables verbose logging on replicaManager when --verbose flag is set
+
+### Technical Details
+- Root cause: UpdateReplica in manager.go had hardcoded verbose=false
+- Added verbose field to ReplicaManager struct
+- Added SetVerbose() method to enable/disable verbose logging
+- Modified UpdateReplica to use rm.verbose instead of hardcoded false
+- Modified cmd/sync.go to call replicaManager.SetVerbose(verbose) after creation
+- Now verbose docker compose errors will be logged when rolling updates fail
+
 ## [v0.3.7] - 2025-11-21
 
 ### Added

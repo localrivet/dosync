@@ -24,6 +24,9 @@ type ReplicaManager struct {
 
 	// composeFile is the path to the Docker Compose file
 	composeFile string
+
+	// verbose enables detailed logging of operations
+	verbose bool
 }
 
 // NewReplicaManager creates a new ReplicaManager for the specified Docker Compose file
@@ -68,6 +71,11 @@ func (rm *ReplicaManager) UnregisterDetector(replicaType ReplicaType) bool {
 		return true
 	}
 	return false
+}
+
+// SetVerbose enables or disables verbose logging for all operations
+func (rm *ReplicaManager) SetVerbose(verbose bool) {
+	rm.verbose = verbose
 }
 
 // GetServiceReplicas returns all replicas for a specific service
@@ -141,7 +149,8 @@ func (rm *ReplicaManager) detectReplicas() error {
 // UpdateReplica updates the given replica to the specified new image tag
 func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 	// Call UpdateDockerComposeAndRestart directly (same package)
-	err := UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, false, nil)
+	// Use the manager's verbose setting to enable detailed error logging
+	err := UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, rm.verbose, nil)
 	if err != nil {
 		return err
 	}
