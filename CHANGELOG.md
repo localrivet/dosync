@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.3.10] - 2025-11-24
+
+### Fixed - Complete ONE WAY OF DOING THINGS Consolidation
+- **REGISTRY**: Consolidated 8 duplicate registry clients into ONE universal implementation
+- **STRATEGY**: Consolidated duplicate UpdateStrategy interfaces (manager/types.go → strategy/types.go)
+- **NOTIFIER**: Consolidated duplicate Notifier interfaces (manager/types.go → notification/notification.go)
+
+### Removed
+- `internal/registry/client_v2.go` - Merged into client.go
+- Legacy registry clients: DockerHubClient, GHCRClient, GCRClient, ACRClient, ECRClient, HarborClient, DOCRClient, CustomRegistryClient
+- Stub adapters: StrategyAdapter, NotifierAdapter (replaced with real implementations)
+- ~500 lines of duplicate code
+
+### Technical Details
+- All container registries now use single `registryClient` backed by google/go-containerregistry
+- `manager.UpdateStrategy` is now an alias to `strategy.UpdateStrategy`
+- `manager.Notifier` is now an alias to `notification.Notifier`
+- Manager now creates real strategy via `CreateStrategy()` and real notifiers via `CreateSlackNotifier()`
+- Method naming unified: `SendDeploymentStart` → `SendDeploymentStarted`
+
+### Breaking Changes
+- None for users - API remains the same
+- Internal refactoring only
+
 ## [v0.3.9] - 2025-11-21
 
 ### Fixed

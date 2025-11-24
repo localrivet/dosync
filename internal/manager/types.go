@@ -1,39 +1,16 @@
 package manager
 
 import (
-	"dosync/internal/replica"
-	"time"
+	"dosync/internal/notification"
+	"dosync/internal/strategy"
 )
 
-// UpdateStrategy defines the interface for update strategies
-type UpdateStrategy interface {
-	// Execute performs the update strategy on the given replicas
-	Execute(replicas []replica.Replica, imageTag string, healthCheck func(replica replica.Replica) bool) error
-}
+// UpdateStrategy is an alias to strategy.UpdateStrategy
+// Following the ONE WAY OF DOING THINGS rule, we use the strategy package's interface
+// which is the complete, production implementation.
+type UpdateStrategy = strategy.UpdateStrategy
 
-// Notifier defines the interface for notification providers
-type Notifier interface {
-	// ShouldNotifyOnStart returns true if this notifier should send notifications at the start of a deployment
-	ShouldNotifyOnStart() bool
-
-	// ShouldNotifyOnSuccess returns true if this notifier should send notifications on successful deployments
-	ShouldNotifyOnSuccess() bool
-
-	// ShouldNotifyOnFailure returns true if this notifier should send notifications on failed deployments
-	ShouldNotifyOnFailure() bool
-
-	// ShouldNotifyOnRollback returns true if this notifier should send notifications on rollbacks
-	ShouldNotifyOnRollback() bool
-
-	// SendDeploymentStart sends a notification at the start of a deployment
-	SendDeploymentStart(service, version string) error
-
-	// SendDeploymentSuccess sends a notification on successful deployment
-	SendDeploymentSuccess(service, version string, duration time.Duration) error
-
-	// SendDeploymentFailure sends a notification on failed deployment
-	SendDeploymentFailure(service, version, reason string) error
-
-	// SendRollback sends a notification on rollback
-	SendRollback(service, fromVersion, toVersion string) error
-}
+// Notifier is an alias to notification.Notifier
+// Following the ONE WAY OF DOING THINGS rule, we use the notification package's interface
+// which has the complete implementation (Slack, Email, Webhook).
+type Notifier = notification.Notifier

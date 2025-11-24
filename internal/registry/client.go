@@ -1,52 +1,17 @@
 package registry
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"math"
-	"net/http"
 	"strings"
-	"time"
+
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
-// doRequestWithRetry executes an HTTP request with exponential backoff retry logic
-// Retries on network errors and 5xx server errors, but not on 4xx client errors
-func doRequestWithRetry(client *http.Client, req *http.Request, maxRetries int) (*http.Response, error) {
-	var lastErr error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Clone the request for each attempt (in case body was read)
-		reqClone := req.Clone(req.Context())
-
-		resp, err := client.Do(reqClone)
-
-		// Success - return immediately
-		if err == nil && resp.StatusCode < 500 {
-			return resp, nil
-		}
-
-		// Store the error
-		if err != nil {
-			lastErr = err
-		} else {
-			// 5xx error - close body and prepare to retry
-			resp.Body.Close()
-			lastErr = fmt.Errorf("server error: status code %d", resp.StatusCode)
-		}
-
-		// Don't retry on the last attempt
-		if attempt < maxRetries {
-			// Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
-			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
-			time.Sleep(backoff)
-		}
-	}
-
-	return nil, fmt.Errorf("request failed after %d retries: %w", maxRetries, lastErr)
-}
-
-// RegistryClient defines the interface for interacting with container registries
+// RegistryClient defines the interface for interacting with container registries.
+// All registry types (Docker Hub, GHCR, GCR, ACR, ECR, Harbor, Quay, DOCR, etc.)
+// use the same implementation backed by Google's go-containerregistry library.
 type RegistryClient interface {
 	// GetTags retrieves all tags for a repository
 	GetTags(repository string) ([]string, error)
@@ -58,339 +23,131 @@ type RegistryClient interface {
 	Type() RegistryType
 }
 
-// BasicRegistryClient implements common registry client functionality
-type BasicRegistryClient struct {
-	authenticator Authenticator
-	baseURL       string
+// registryClient implements RegistryClient using Google's go-containerregistry library.
+// This is the ONE implementation that handles ALL OCI-compliant registries.
+type registryClient struct {
+	auth     authn.Authenticator
+	username string
+	password string
 }
 
-// NewRegistryClient creates a registry client for the specified registry type
+// NewRegistryClient creates a registry client for the specified registry type.
+// Following the ONE WAY OF DOING THINGS rule, ALL registry types use the same
+// implementation backed by Google's go-containerregistry library.
 func NewRegistryClient(regType RegistryType, options map[string]string) (RegistryClient, error) {
-	// For GHCR and other OCI-compliant registries, use the new universal client
-	// This uses Google's go-containerregistry library which handles all authentication properly
-	if regType == GHCR || regType == GCR || regType == ACR || regType == DockerHub {
-		username := options["username"]
-		password := options["password"]
+	username := options["username"]
+	password := options["password"]
 
-		// For GHCR, password is the GitHub PAT
-		if regType == GHCR && password == "" {
-			password = options["token"]
+	// For GHCR, password is the GitHub PAT (can be passed as "token" for backwards compatibility)
+	if regType == GHCR && password == "" {
+		password = options["token"]
+	}
+
+	// For ECR, use access key as username and secret key as password
+	if regType == ECR {
+		if username == "" {
+			username = options["accessKey"]
 		}
-
-		return NewContainerRegistryClient(username, password)
-	}
-
-	// Legacy implementation for other registry types
-	auth, err := CreateAuthenticator(regType, options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create authenticator: %w", err)
-	}
-
-	switch regType {
-	case DockerHub:
-		return &DockerHubClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       "https://registry.hub.docker.com/v2",
-			},
-		}, nil
-	case GHCR:
-		return &GHCRClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       "https://ghcr.io/v2",
-			},
-		}, nil
-	case DOCR:
-		return &DOCRClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       "https://api.digitalocean.com/v2/registry",
-			},
-		}, nil
-	case GCR:
-		return &GCRClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       "https://gcr.io/v2",
-			},
-			CredentialsFile: options["credentialsFile"],
-		}, nil
-	case ACR:
-		return &ACRClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       options["registry"],
-			},
-			ClientID:     options["clientID"],
-			ClientSecret: options["clientSecret"],
-		}, nil
-	case ECR:
-		return &ECRClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       options["registry"],
-			},
-			AccessKey: options["accessKey"],
-			SecretKey: options["secretKey"],
-			Region:    options["region"],
-		}, nil
-	case Harbor:
-		return &HarborClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       options["url"],
-			},
-			Username: options["username"],
-			Password: options["password"],
-		}, nil
-	case Custom:
-		url := options["url"]
-		if url == "" {
-			return nil, fmt.Errorf("url is required for custom registry")
+		if password == "" {
+			password = options["secretKey"]
 		}
-		return &CustomRegistryClient{
-			BasicRegistryClient: BasicRegistryClient{
-				authenticator: auth,
-				baseURL:       url,
-			},
-		}, nil
-	default:
-		return nil, fmt.Errorf("unsupported registry type: %s", regType)
 	}
+
+	// For ACR, use client ID as username and client secret as password
+	if regType == ACR {
+		if username == "" {
+			username = options["clientID"]
+		}
+		if password == "" {
+			password = options["clientSecret"]
+		}
+	}
+
+	return newRegistryClient(username, password)
 }
 
-// DockerHubClient implements RegistryClient for Docker Hub
-type DockerHubClient struct {
-	BasicRegistryClient
+// newRegistryClient creates a new registry client using go-containerregistry.
+// It uses credentials from:
+// 1. Explicitly provided username/password (Basic Auth)
+// 2. Docker config file (~/.docker/config.json) - via DefaultKeychain
+func newRegistryClient(username, password string) (*registryClient, error) {
+	var auth authn.Authenticator
+
+	if username != "" && password != "" {
+		// Use explicit credentials (Basic Auth)
+		auth = &authn.Basic{
+			Username: username,
+			Password: password,
+		}
+	} else {
+		// Use anonymous auth - DefaultKeychain will be used per-request
+		auth = authn.Anonymous
+	}
+
+	return &registryClient{
+		auth:     auth,
+		username: username,
+		password: password,
+	}, nil
 }
 
-func (c *DockerHubClient) GetTags(repository string) ([]string, error) {
-	url := fmt.Sprintf("https://registry.hub.docker.com/v2/repositories/%s/tags?page_size=100", repository)
-	req, err := http.NewRequest("GET", url, nil)
+// getRemoteOption returns the appropriate remote option for authentication
+func (c *registryClient) getRemoteOption() remote.Option {
+	if c.username != "" && c.password != "" {
+		// Use explicit credentials
+		return remote.WithAuth(c.auth)
+	}
+	// Use DefaultKeychain which reads from ~/.docker/config.json
+	return remote.WithAuthFromKeychain(authn.DefaultKeychain)
+}
+
+// GetTags retrieves all tags for a repository.
+// repository should be in format: "owner/repo" or "registry/owner/repo"
+// Examples:
+//   - Docker Hub: "library/ubuntu" or "nginx"
+//   - GHCR: "ghcr.io/localrivet/dosync"
+//   - GCR: "gcr.io/my-project/my-image"
+func (c *registryClient) GetTags(repository string) ([]string, error) {
+	// Parse the repository reference
+	// This automatically detects the registry from the repository format
+	repo, err := name.NewRepository(repository)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("invalid repository format '%s': %w", repository, err)
 	}
 
-	// Apply authentication if needed
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
+	// List tags using the remote package with authentication
+	tags, err := remote.List(repo, c.getRemoteOption())
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to list tags for %s: %w", repository, err)
 	}
 
-	var result struct {
-		Results []struct {
-			Name string `json:"name"`
-		} `json:"results"`
+	if len(tags) == 0 {
+		return nil, fmt.Errorf("no tags found for repository %s", repository)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	tags := make([]string, 0, len(result.Results))
-	for _, t := range result.Results {
-		tags = append(tags, t.Name)
-	}
 	return tags, nil
 }
 
-func (c *DockerHubClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client - would require additional API calls
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *DockerHubClient) Type() RegistryType {
-	return DockerHub
-}
-
-// GHCRClient implements RegistryClient for GitHub Container Registry
-type GHCRClient struct {
-	BasicRegistryClient
-}
-
-func (c *GHCRClient) GetTags(repository string) ([]string, error) {
-	// GHCR follows Docker Registry v2 API specification
-	// URL format: https://ghcr.io/v2/{namespace}/{repository}/tags/list
-	url := fmt.Sprintf("%s/%s/tags/list", c.baseURL, repository)
-
-	req, err := http.NewRequest("GET", url, nil)
+// GetManifest retrieves the manifest for a specific image tag
+func (c *registryClient) GetManifest(repository, tag string) ([]byte, error) {
+	// Parse the full image reference (repository + tag)
+	ref, err := name.ParseReference(fmt.Sprintf("%s:%s", repository, tag))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request for %s: %w", url, err)
+		return nil, fmt.Errorf("invalid image reference '%s:%s': %w", repository, tag, err)
 	}
 
-	// Set required headers for Docker Registry v2 API
-	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
-
-	// Apply authentication if needed
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("GHCR authentication failed for %s: %w", repository, err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
+	// Get the image descriptor
+	desc, err := remote.Get(ref, c.getRemoteOption())
 	if err != nil {
-		return nil, fmt.Errorf("GHCR API request failed for %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	// Enhanced error handling with more specific messages
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		bodyString := string(bodyBytes)
-
-		switch resp.StatusCode {
-		case http.StatusNotFound:
-			return nil, fmt.Errorf("GHCR repository not found: %s (URL: %s). Verify the repository exists and is accessible", repository, url)
-		case http.StatusUnauthorized:
-			return nil, fmt.Errorf("GHCR authentication failed for %s: invalid token or insufficient permissions (URL: %s)", repository, url)
-		case http.StatusForbidden:
-			return nil, fmt.Errorf("GHCR access forbidden for %s: token may lack required permissions (URL: %s)", repository, url)
-		default:
-			return nil, fmt.Errorf("GHCR API request failed for %s with status %d: %s (URL: %s)", repository, resp.StatusCode, bodyString, url)
-		}
+		return nil, fmt.Errorf("failed to get manifest for %s:%s: %w", repository, tag, err)
 	}
 
-	var result struct {
-		Name string   `json:"name"`
-		Tags []string `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode GHCR response for %s: %w", repository, err)
-	}
-
-	if len(result.Tags) == 0 {
-		return nil, fmt.Errorf("no tags found for GHCR repository %s", repository)
-	}
-
-	return result.Tags, nil
+	// Return the raw manifest bytes
+	return desc.Manifest, nil
 }
 
-func (c *GHCRClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *GHCRClient) Type() RegistryType {
-	return GHCR
-}
-
-// DOCRClient implements RegistryClient for DigitalOcean Container Registry
-type DOCRClient struct {
-	BasicRegistryClient
-}
-
-func (c *DOCRClient) GetTags(repository string) ([]string, error) {
-	// First, extract registry and repo from the full repository name
-	parts := ParseRepositoryParts(repository)
-	if parts.Registry == "" || parts.Name == "" {
-		return nil, fmt.Errorf("invalid repository format for DOCR: %s", repository)
-	}
-
-	url := fmt.Sprintf("%s/%s/repositories/%s/tags", c.baseURL, parts.Registry, parts.Name)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Apply authentication
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []struct {
-			Name string `json:"name"`
-		} `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	tags := make([]string, 0, len(result.Tags))
-	for _, t := range result.Tags {
-		tags = append(tags, t.Name)
-	}
-	return tags, nil
-}
-
-func (c *DOCRClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *DOCRClient) Type() RegistryType {
-	return DOCR
-}
-
-// CustomRegistryClient implements RegistryClient for custom/private registries
-type CustomRegistryClient struct {
-	BasicRegistryClient
-}
-
-func (c *CustomRegistryClient) GetTags(repository string) ([]string, error) {
-	url := fmt.Sprintf("%s/v2/%s/tags/list", c.baseURL, repository)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Apply authentication if needed
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []string `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return result.Tags, nil
-}
-
-func (c *CustomRegistryClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *CustomRegistryClient) Type() RegistryType {
+// Type returns Custom since this client handles all registry types universally
+func (c *registryClient) Type() RegistryType {
 	return Custom
 }
 
@@ -415,180 +172,4 @@ func ParseRepositoryParts(repository string) RepositoryParts {
 	}
 
 	return parts
-}
-
-// GCRClient implements RegistryClient for Google Container Registry
-type GCRClient struct {
-	BasicRegistryClient
-	CredentialsFile string
-}
-
-func (c *GCRClient) GetTags(repository string) ([]string, error) {
-	url := fmt.Sprintf("%s/%s/tags/list", c.baseURL, repository)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Apply authentication if needed
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GCR API request failed with status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []string `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode GCR API response: %w", err)
-	}
-
-	return result.Tags, nil
-}
-
-func (c *GCRClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *GCRClient) Type() RegistryType {
-	return GCR
-}
-
-// ACRClient implements RegistryClient for Azure Container Registry
-type ACRClient struct {
-	BasicRegistryClient
-	ClientID     string
-	ClientSecret string
-}
-
-func (c *ACRClient) GetTags(repository string) ([]string, error) {
-	url := fmt.Sprintf("%s/v2/%s/tags/list", c.baseURL, repository)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Apply authentication if needed
-	if err := c.authenticator.Authenticate(req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ACR API request failed with status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []string `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode ACR API response: %w", err)
-	}
-
-	return result.Tags, nil
-}
-
-func (c *ACRClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *ACRClient) Type() RegistryType {
-	return ACR
-}
-
-// ECRClient implements RegistryClient for AWS ECR
-type ECRClient struct {
-	BasicRegistryClient
-	AccessKey string
-	SecretKey string
-	Region    string
-}
-
-func (c *ECRClient) GetTags(repository string) ([]string, error) {
-	// For proper implementation, AWS SDK for Go should be used
-	// This is a placeholder implementation
-	if c.AccessKey == "" || c.SecretKey == "" || c.Region == "" {
-		return nil, fmt.Errorf("AWS credentials (access key, secret key, region) are required for ECR access")
-	}
-
-	return nil, fmt.Errorf("ECR tag retrieval requires the AWS SDK - not implemented in this basic client")
-}
-
-func (c *ECRClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *ECRClient) Type() RegistryType {
-	return ECR
-}
-
-// HarborClient implements RegistryClient for Harbor registry
-type HarborClient struct {
-	BasicRegistryClient
-	Username string
-	Password string
-}
-
-func (c *HarborClient) GetTags(repository string) ([]string, error) {
-	url := fmt.Sprintf("%s/v2/%s/tags/list", c.baseURL, repository)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Apply authentication
-	if c.Username != "" && c.Password != "" {
-		req.SetBasicAuth(c.Username, c.Password)
-	}
-
-	client := &http.Client{}
-	resp, err := doRequestWithRetry(client, req, 3)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Harbor API request failed with status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []string `json:"tags"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode Harbor API response: %w", err)
-	}
-
-	return result.Tags, nil
-}
-
-func (c *HarborClient) GetManifest(repository, tag string) ([]byte, error) {
-	// Not implemented for basic client
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *HarborClient) Type() RegistryType {
-	return Harbor
 }

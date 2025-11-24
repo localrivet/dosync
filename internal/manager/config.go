@@ -6,8 +6,10 @@ package manager
 import (
 	"dosync/internal/health"
 	"dosync/internal/metrics"
-	"dosync/internal/replica"
+	"dosync/internal/notification"
 	"dosync/internal/rollback"
+	"dosync/internal/strategy"
+	"fmt"
 	"time"
 )
 
@@ -29,26 +31,6 @@ type CustomComponents struct {
 	Logger             interface{}
 }
 
-// StrategyAdapter is a placeholder for strategy implementation
-type StrategyAdapter struct {
-	strategy string
-	logger   Logger
-}
-
-// NewStrategyAdapter creates a new strategy adapter
-func NewStrategyAdapter(strategy string, logger Logger) (*StrategyAdapter, error) {
-	return &StrategyAdapter{
-		strategy: strategy,
-		logger:   logger,
-	}, nil
-}
-
-// NotifierAdapter implements the Notifier interface
-type NotifierAdapter struct {
-	config *SlackConfig
-	logger Logger
-}
-
 // SlackConfig holds configuration for Slack notifications
 type SlackConfig struct {
 	Enabled    bool
@@ -56,14 +38,6 @@ type SlackConfig struct {
 	Channel    string
 	Username   string
 	IconEmoji  string
-}
-
-// NewNotifierAdapter creates a new notifier adapter
-func NewNotifierAdapter(config *SlackConfig, logger Logger) (*NotifierAdapter, error) {
-	return &NotifierAdapter{
-		config: config,
-		logger: logger,
-	}, nil
 }
 
 // NotificationsConfig contains configuration for various notification types
@@ -129,30 +103,33 @@ func (c *RollingUpdateConfig) ApplyDefaults() {
 	}
 }
 
-// Implement UpdateStrategy for StrategyAdapter
-func (s *StrategyAdapter) Execute(replicas []replica.Replica, imageTag string, healthCheck func(replica.Replica) bool) error {
-	s.logger.Info("Executing strategy '%s' for %d replicas with imageTag '%s' (stub)", s.strategy, len(replicas), imageTag)
-	return nil
+// CreateStrategy creates the appropriate UpdateStrategy based on config.
+// Following ONE WAY OF DOING THINGS - uses strategy package directly.
+func CreateStrategy(replicaManager strategy.ReplicaManager, healthChecker health.HealthChecker, config strategy.StrategyConfig) (UpdateStrategy, error) {
+	return strategy.NewUpdateStrategy(config, replicaManager, healthChecker)
 }
 
-// Implement Notifier interface for NotifierAdapter
-func (n *NotifierAdapter) ShouldNotifyOnStart() bool    { return true }
-func (n *NotifierAdapter) ShouldNotifyOnSuccess() bool  { return true }
-func (n *NotifierAdapter) ShouldNotifyOnFailure() bool  { return true }
-func (n *NotifierAdapter) ShouldNotifyOnRollback() bool { return true }
-func (n *NotifierAdapter) SendDeploymentStart(service, version string) error {
-	n.logger.Info("NotifierAdapter: Deployment start for %s:%s", service, version)
-	return nil
-}
-func (n *NotifierAdapter) SendDeploymentSuccess(service, version string, duration time.Duration) error {
-	n.logger.Info("NotifierAdapter: Deployment success for %s:%s in %v", service, version, duration)
-	return nil
-}
-func (n *NotifierAdapter) SendDeploymentFailure(service, version, reason string) error {
-	n.logger.Info("NotifierAdapter: Deployment failure for %s:%s, reason: %s", service, version, reason)
-	return nil
-}
-func (n *NotifierAdapter) SendRollback(service, fromVersion, toVersion string) error {
-	n.logger.Info("NotifierAdapter: Rollback for %s from %s to %s", service, fromVersion, toVersion)
-	return nil
+// CreateSlackNotifier creates a Slack notifier from SlackConfig.
+// Following ONE WAY OF DOING THINGS - uses notification package directly.
+func CreateSlackNotifier(cfg *SlackConfig) (Notifier, error) {
+	if cfg == nil || !cfg.Enabled {
+		return nil, fmt.Errorf("slack notification not enabled")
+	}
+
+	notificationConfig := notification.NotificationConfig{
+		Type:      "slack",
+		Endpoint:  cfg.WebhookURL,
+		Token:     "", // WebhookURL is used directly for incoming webhooks
+		Channel:   cfg.Channel,
+		OnSuccess: true,
+		OnFailure: true,
+		OnRollback: true,
+	}
+
+	notifier := &notification.SlackNotifier{}
+	if err := notifier.Configure(notificationConfig); err != nil {
+		return nil, fmt.Errorf("failed to configure slack notifier: %w", err)
+	}
+
+	return notifier, nil
 }

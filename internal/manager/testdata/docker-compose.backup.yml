@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   test-service:
-    image: nginx:latest
+    image: nginx:1.21.0
     ports:
       - "47081:80"
     environment:

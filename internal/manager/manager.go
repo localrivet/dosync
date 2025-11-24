@@ -10,6 +10,7 @@ import (
 	"dosync/internal/metrics"
 	"dosync/internal/replica"
 	"dosync/internal/rollback"
+	"dosync/internal/strategy"
 )
 
 // RollingUpdateManager integrates all components for managing rolling updates
@@ -76,11 +77,18 @@ func (rum *RollingUpdateManager) initComponents() error {
 
 	// Initialize Strategy based on config
 	rum.logger.Info("Initializing UpdateStrategy: %s", rum.Config.UpdateStrategy)
-	strategyAdapter, err := NewStrategyAdapter(rum.Config.UpdateStrategy, rum.logger)
+	strategyConfig := strategy.StrategyConfig{
+		Type:                rum.Config.UpdateStrategy,
+		Timeout:             rum.Config.HealthCheckTimeout * 10, // Strategy timeout is longer than individual health checks
+		RollbackOnFailure:   rum.Config.RollbackOnFailure,
+		DelayBetweenUpdates: 5 * time.Second,
+		HealthCheck:         healthConfig,
+	}
+	strat, err := CreateStrategy(rum.ReplicaManager, rum.HealthChecker, strategyConfig)
 	if err != nil {
 		return WrapError(err, "strategy", "failed to initialize Strategy", "", "", true, false)
 	}
-	rum.Strategy = strategyAdapter
+	rum.Strategy = strat
 
 	// Initialize RollbackController
 	rum.logger.Info("Initializing RollbackController")
@@ -102,7 +110,7 @@ func (rum *RollingUpdateManager) initComponents() error {
 	if notifierConfig != nil {
 		// Initialize slack notifier if configured
 		if notifierConfig.SlackConfig != nil && notifierConfig.SlackConfig.Enabled {
-			notifier, err := NewNotifierAdapter(notifierConfig.SlackConfig, rum.logger)
+			notifier, err := CreateSlackNotifier(notifierConfig.SlackConfig)
 			if err != nil {
 				rum.logger.Error("Failed to initialize Slack notifier: %v", err)
 				// Continue even if notification setup fails - it's not critical
@@ -171,11 +179,9 @@ func (rum *RollingUpdateManager) Update(service string, newImageTag string) erro
 
 	// Send start notifications
 	for _, notifier := range rum.Notifiers {
-		if notifier.ShouldNotifyOnStart() {
-			if err := notifier.SendDeploymentStart(service, newImageTag); err != nil {
-				rum.logger.Error("Error sending start notification: %v", err)
-				// Continue despite notification error
-			}
+		if err := notifier.SendDeploymentStarted(service, newImageTag); err != nil {
+			rum.logger.Error("Error sending start notification: %v", err)
+			// Continue despite notification error
 		}
 	}
 
@@ -214,15 +220,8 @@ func (rum *RollingUpdateManager) Update(service string, newImageTag string) erro
 		rum.logger.Info("Found %d replicas for service %s", len(replicas), svc)
 
 		// Execute the update strategy on the service
-		if err := rum.Strategy.Execute(replicas, imageTag, func(replica replica.Replica) bool {
-			// Health check callback for the strategy to use
-			healthy, err := rum.HealthChecker.Check(replica)
-			if err != nil {
-				rum.logger.Error("Health check error for replica %s: %v", replica.ReplicaID, err)
-				return false
-			}
-			return healthy
-		}); err != nil {
+		// The strategy handles health checks internally - no callback needed
+		if err := rum.Strategy.Execute(svc, imageTag); err != nil {
 			wrappedErr := WrapError(err, "strategy", "strategy execution failed", svc, imageTag, true, true)
 
 			// Try to recover from the error
