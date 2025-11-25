@@ -110,12 +110,25 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 
 	// Simply run docker compose up to start the new container
 	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", serviceName)
+	// Use --force-recreate to handle stale containers that block recreation
+	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logVerbose(verbose, fmt.Sprintf("Docker compose up failed: %s", string(output)))
-		logVerbose(verbose, fmt.Sprintf("Docker compose up error: %v", err))
-		return fmt.Errorf("failed to start service %s: %s, error: %w", serviceName, string(output), err)
+		// If we hit "container name already in use", try removing the stale container and retry
+		if strings.Contains(string(output), "already in use") {
+			logVerbose(verbose, "Container name conflict detected, attempting to remove stale container")
+			// Extract container name from service and try to remove it
+			rmCmd := exec.Command("docker", "rm", "-f", serviceName)
+			rmCmd.Run() // Ignore error - container might not exist or have different name
+			// Retry the compose up
+			cmd = exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+			output, err = cmd.CombinedOutput()
+		}
+		if err != nil {
+			logVerbose(verbose, fmt.Sprintf("Docker compose up failed: %s", string(output)))
+			logVerbose(verbose, fmt.Sprintf("Docker compose up error: %v", err))
+			return fmt.Errorf("failed to start service %s: %s, error: %w", serviceName, string(output), err)
+		}
 	}
 	logVerbose(verbose, fmt.Sprintf("Docker compose up output: %s", string(output)))
 

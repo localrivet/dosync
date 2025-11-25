@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.3.11] - 2025-11-25
+
+### Fixed
+- **CRITICAL**: Fixed "container name already in use" error blocking deployments
+- **FIXED**: Added `--force-recreate` flag to docker compose up command
+- **FIXED**: Auto-recovery from stale container conflicts by removing and retrying
+
+### Technical Details
+- Root cause: Stale containers with the same name blocked new container creation
+- Solution: Use `--force-recreate` flag and retry with container removal on conflict
+- Modified `internal/replica/update.go` to handle "already in use" errors gracefully
+
 ## [v0.3.10] - 2025-11-24
 
 ### Fixed - Complete ONE WAY OF DOING THINGS Consolidation
