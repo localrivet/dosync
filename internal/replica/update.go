@@ -115,11 +115,17 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// If we hit "container name already in use", try removing the stale container and retry
-		if strings.Contains(string(output), "already in use") {
+		outputStr := string(output)
+		if strings.Contains(outputStr, "already in use") {
 			logVerbose(verbose, "Container name conflict detected, attempting to remove stale container")
-			// Extract container name from service and try to remove it
-			rmCmd := exec.Command("docker", "rm", "-f", serviceName)
-			rmCmd.Run() // Ignore error - container might not exist or have different name
+			// Extract the actual container name from the error message
+			// Error format: The container name "/crowdgains_app" is already in use
+			containerName := extractContainerNameFromError(outputStr)
+			if containerName != "" {
+				logVerbose(verbose, fmt.Sprintf("Removing stale container: %s", containerName))
+				rmCmd := exec.Command("docker", "rm", "-f", containerName)
+				rmCmd.Run() // Ignore error - best effort removal
+			}
 			// Retry the compose up
 			cmd = exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 			output, err = cmd.CombinedOutput()
@@ -170,4 +176,16 @@ func logVerbose(verbose bool, message string) {
 	if verbose {
 		fmt.Println(message)
 	}
+}
+
+// extractContainerNameFromError extracts the container name from a Docker error message
+// Error format: The container name "/crowdgains_app" is already in use
+func extractContainerNameFromError(errorOutput string) string {
+	// Match: container name "/some_name" is already in use
+	re := regexp.MustCompile(`container name "/?([^"]+)" is already in use`)
+	matches := re.FindStringSubmatch(errorOutput)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
 }

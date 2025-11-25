@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.12] - 2025-11-25
+
+### Fixed
+- **CRITICAL**: Fixed stale container removal not working due to wrong container name
+- **FIXED**: Now extracts actual container name from Docker error message (e.g., `crowdgains_app` not `app`)
+- **FIXED**: Docker Compose uses `{project}_{service}` naming, extraction now handles this
+
+### Technical Details
+- Root cause: v0.3.11 tried to remove `app` but actual container was `crowdgains_app`
+- Solution: Parse error message with regex to extract actual container name
+- Added `extractContainerNameFromError()` function with comprehensive test coverage
+- Error format: `The container name "/crowdgains_app" is already in use`
+
 ## [v0.3.11] - 2025-11-25
 
 ### Fixed
