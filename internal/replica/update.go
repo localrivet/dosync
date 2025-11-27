@@ -106,12 +106,17 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		}
 	}
 
-	logVerbose(verbose, fmt.Sprintf("Starting docker compose up for service: %s", serviceName))
+	// Derive project name from compose file directory to ensure consistent network naming
+	// Without this, Docker Compose uses the current working directory which causes
+	// containers to end up on different networks (e.g., app_app-network vs crowdgains_app-network)
+	projectName := filepath.Base(composeDir)
+	logVerbose(verbose, fmt.Sprintf("Starting docker compose up for service: %s (project: %s)", serviceName, projectName))
 
 	// Simply run docker compose up to start the new container
 	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
 	// Use --force-recreate to handle stale containers that block recreation
-	cmd := exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+	// Use --project-name to ensure consistent network naming
+	cmd := exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// If we hit "container name already in use", try removing the stale container and retry
@@ -126,8 +131,8 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 				rmCmd := exec.Command("docker", "rm", "-f", containerName)
 				rmCmd.Run() // Ignore error - best effort removal
 			}
-			// Retry the compose up
-			cmd = exec.Command("docker", "compose", "-f", filePath, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+			// Retry the compose up with project name
+			cmd = exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
 			output, err = cmd.CombinedOutput()
 		}
 		if err != nil {

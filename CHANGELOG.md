@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.13] - 2025-11-27
+
+### Fixed
+- **CRITICAL**: Fixed containers ending up on different Docker networks after DOSync deployment
+- **ROOT CAUSE**: DOSync was running `docker compose up` without `--project-name`, causing Docker to derive the project name from the working directory (`/app`) instead of the compose file directory
+- **RESULT**: Containers like `crowdgains_app` ended up on `app_app-network` while `crowdgains_postgres` stayed on `crowdgains_app-network`, breaking inter-container communication
+
+### Technical Details
+- Added `--project-name` flag to all `docker compose` commands
+- Project name is derived from compose file directory: `filepath.Base(composeDir)`
+- Example: `/opt/crowdgains/compose.yaml` → project name `crowdgains` → network `crowdgains_app-network`
+- All containers now consistently use the same network
+
 ## [v0.3.12] - 2025-11-25
 
 ### Fixed
