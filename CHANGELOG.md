@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.14] - 2025-11-27
+
+### Fixed
+- **CRITICAL**: Fixed project name extraction when DOSync runs inside Docker container
+- **ROOT CAUSE**: DOSync mounts compose file to `/app/compose.yaml`, so `filepath.Base("/app")` returned `app` instead of actual project name
+- **RESULT**: New containers created with wrong project name (`app_app-network` instead of `almatuck_app-network`), breaking inter-container networking
+
+### Technical Details
+- Added `extractProjectNameFromCompose()` function to extract project name from `container_name` field
+- Pattern: `container_name: almatuck_app` → project name `almatuck`
+- Falls back to directory-based name if no container_name pattern found
+- This ensures DOSync deployments maintain consistent network naming regardless of where compose file is mounted
+
 ## [v0.3.13] - 2025-11-27
 
 ### Fixed

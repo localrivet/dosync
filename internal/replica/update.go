@@ -106,10 +106,15 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		}
 	}
 
-	// Derive project name from compose file directory to ensure consistent network naming
-	// Without this, Docker Compose uses the current working directory which causes
-	// containers to end up on different networks (e.g., app_app-network vs crowdgains_app-network)
-	projectName := filepath.Base(composeDir)
+	// Derive project name to ensure consistent network naming
+	// Priority: 1) Extract from container_name in compose file (e.g., "almatuck_app" -> "almatuck")
+	//           2) Fall back to compose file directory name
+	// This is critical because DOSync runs from /app inside the container, so filepath.Base
+	// would return "app" instead of the actual project name like "almatuck" or "crowdgains"
+	projectName := extractProjectNameFromCompose(input, serviceName)
+	if projectName == "" {
+		projectName = filepath.Base(composeDir)
+	}
 	logVerbose(verbose, fmt.Sprintf("Starting docker compose up for service: %s (project: %s)", serviceName, projectName))
 
 	// Simply run docker compose up to start the new container
@@ -192,5 +197,29 @@ func extractContainerNameFromError(errorOutput string) string {
 	if len(matches) >= 2 {
 		return matches[1]
 	}
+	return ""
+}
+
+// extractProjectNameFromCompose extracts the project name from container_name in compose file
+// Looks for patterns like "container_name: almatuck_app" and extracts "almatuck"
+// This is needed because DOSync runs from /app inside the container, so we can't use
+// the compose file directory to determine the project name
+func extractProjectNameFromCompose(composeContent []byte, serviceName string) string {
+	// Look for container_name pattern: container_name: projectname_servicename
+	// Examples: "almatuck_app", "crowdgains_postgres", "patternadvisor_dosync"
+	re := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_` + regexp.QuoteMeta(serviceName) + `\s*[\r\n]`)
+	matches := re.FindSubmatch(composeContent)
+	if len(matches) >= 2 {
+		return string(matches[1])
+	}
+
+	// Also try to find any container_name and extract prefix
+	// This handles cases where serviceName doesn't match exactly (e.g., service "app" vs container "almatuck_app")
+	reAny := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_(?:app|postgres|dosync|web|api|db)\s*[\r\n]`)
+	matchesAny := reAny.FindSubmatch(composeContent)
+	if len(matchesAny) >= 2 {
+		return string(matchesAny[1])
+	}
+
 	return ""
 }
