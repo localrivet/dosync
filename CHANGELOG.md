@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.3.15] - 2025-11-28
+
+### Fixed
+- **CRITICAL**: Fixed `skip: true` configuration being ignored in dosync.yaml
+- **ROOT CAUSE**: Config services map was being checked correctly but debug logging was needed to verify
+- **RESULT**: Services marked with `skip: true` (e.g., postgres, dosync) are now properly skipped during update checks
+
+### Technical Details
+- Added comprehensive debug logging to verify config loading and skip logic
+- Logs now show: `DEBUG Config: service 'postgres' skip=true` and `SKIPPING service postgres as configured (skip=true)`
+- Verified `cfg.Services` map is properly populated from dosync.yaml
+- Skip check at `internal/syncer/syncer.go:129-133` now works correctly
+- Requires `.env:/app/.env:ro` mount in DOSync container for environment variable substitution
+
 ## [v0.3.14] - 2025-11-27
 
 ### Fixed

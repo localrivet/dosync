@@ -119,6 +119,17 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 
 	cfg := config.GetConfig() // For registry credentials
 
+	// Debug: Log services configuration
+	logVerbose(verbose, fmt.Sprintf("DEBUG: cfg=%p", cfg))
+	if cfg != nil {
+		logVerbose(verbose, fmt.Sprintf("DEBUG: cfg.Services=%p, len=%d", cfg.Services, len(cfg.Services)))
+		if cfg.Services != nil {
+			for svcName, svcCfg := range cfg.Services {
+				logVerbose(verbose, fmt.Sprintf("DEBUG Config: service '%s' skip=%v", svcName, svcCfg.Skip))
+			}
+		}
+	}
+
 	for serviceName, service := range compose.Services {
 		logVerbose(verbose, fmt.Sprintf("Processing service: %s with image: %s", serviceName, service.Image))
 		if service.Image == "" {
@@ -128,7 +139,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 		// Check if service should be skipped (configured in dosync.yaml)
 		if cfg != nil && cfg.Services != nil {
 			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
-				logVerbose(verbose, fmt.Sprintf("Skipping service %s as configured", serviceName))
+				logVerbose(verbose, fmt.Sprintf("SKIPPING service %s as configured (skip=true)", serviceName))
 				continue
 			}
 		}
