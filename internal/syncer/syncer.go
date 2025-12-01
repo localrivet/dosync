@@ -102,8 +102,11 @@ type DOTag struct {
 }
 
 // checkAndUpdateServices loads the compose file, checks for new tags,
-// and updates/restarts services as needed.
+// and updates/restarts services as needed. Also starts any new services
+// defined in the compose file that aren't currently running.
 func checkAndUpdateServices(filePath string, verbose bool) {
+	// First, check for new services that need to be started
+	startNewServices(filePath, verbose)
 	composeFile, err := os.ReadFile(filePath)
 	if err != nil {
 		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file: %s\n", err), true)
@@ -298,6 +301,119 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			logVerbose(verbose, fmt.Sprintf("Service %s is already running the latest tag: %s", serviceName, currentImageTag))
 		}
 	}
+}
+
+// startNewServices checks for services defined in the compose file that aren't
+// currently running and starts them. This handles the case where new services
+// are added to the compose file after initial deployment.
+func startNewServices(filePath string, verbose bool) {
+	composeFile, err := os.ReadFile(filePath)
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file for new service check: %s", err), true)
+		return
+	}
+
+	var compose DockerCompose
+	err = YamlUnmarshal(composeFile, &compose)
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Failed to unmarshal docker-compose file for new service check: %s", err), true)
+		return
+	}
+
+	cfg := config.GetConfig()
+
+	// Get list of running containers
+	runningServices, err := getRunningServices()
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Failed to get running services: %s", err), true)
+		return
+	}
+
+	// Check each service in compose file
+	for serviceName, service := range compose.Services {
+		// Skip services without images (build-only services)
+		if service.Image == "" {
+			continue
+		}
+
+		// Check if service should be skipped
+		if cfg != nil && cfg.Services != nil {
+			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
+				continue
+			}
+		}
+
+		// Check if service is already running
+		if isServiceRunning(serviceName, runningServices) {
+			continue
+		}
+
+		// Service is not running - start it
+		logVerbose(verbose, fmt.Sprintf("NEW SERVICE DETECTED: %s is defined in compose file but not running, starting it...", serviceName), true)
+
+		// Extract project name from compose file
+		projectName := extractProjectNameFromComposeContent(composeFile)
+		if projectName == "" {
+			projectName = "app" // fallback
+		}
+
+		// Start the new service
+		cmd := exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", serviceName)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logVerbose(verbose, fmt.Sprintf("Failed to start new service %s: %s, error: %v", serviceName, string(output), err), true)
+		} else {
+			logVerbose(verbose, fmt.Sprintf("Successfully started new service %s", serviceName), true)
+			logVerbose(verbose, fmt.Sprintf("Docker compose output: %s", string(output)))
+		}
+	}
+}
+
+// getRunningServices returns a list of running container names
+func getRunningServices() ([]string, error) {
+	cmd := exec.Command("docker", "ps", "--format", "{{.Names}}")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	err := cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list running containers: %w", err)
+	}
+
+	output := strings.TrimSpace(stdout.String())
+	if output == "" {
+		return []string{}, nil
+	}
+
+	return strings.Split(output, "\n"), nil
+}
+
+// isServiceRunning checks if a service has any running containers
+// It checks for both exact matches and project-prefixed names (e.g., "app" matches "myproject_app")
+func isServiceRunning(serviceName string, runningContainers []string) bool {
+	for _, container := range runningContainers {
+		// Exact match
+		if container == serviceName {
+			return true
+		}
+		// Project-prefixed match (e.g., "almatuck_app" contains "_app")
+		if strings.HasSuffix(container, "_"+serviceName) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractProjectNameFromComposeContent extracts project name from compose file content
+// by looking for container_name patterns like "projectname_servicename"
+func extractProjectNameFromComposeContent(content []byte) string {
+	// Look for container_name patterns
+	re := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_(?:app|postgres|dosync|web|api|db)\s*[\r\n]`)
+	matches := re.FindSubmatch(content)
+	if len(matches) >= 2 {
+		return string(matches[1])
+	}
+	return ""
 }
 
 // extractDORepositoryInfo parses a DigitalOcean image reference and returns registry and repo names.

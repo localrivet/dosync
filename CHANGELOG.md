@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.3.16] - 2025-12-01
+
+### Added
+- **NEW FEATURE**: DOSync now automatically starts new services added to compose.yaml
+- **USE CASE**: When you add a new service to your compose file and push a new image, DOSync will detect the service isn't running and start it automatically
+- **PRODUCTION-READY**: This enables true zero-touch deployments across multiple servers - add a new service, push the image, and all DOSync instances will start it
+
+### Technical Details
+- Added `startNewServices()` function that runs before update checks
+- Gets list of running containers via `docker ps`
+- Compares against services defined in compose.yaml
+- Starts any service that has an image but isn't running
+- Respects `skip: true` configuration - skipped services won't be auto-started
+- Uses correct project name from `container_name` pattern for network consistency
+
 ## [v0.3.15] - 2025-11-28
 
 ### Fixed
