@@ -81,7 +81,7 @@ func TestSyncCmdDispatchesToRollingUpdate(t *testing.T) {
 	defer func() { AppConfig = origAppConfig }()
 
 	called := false
-	handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
+	handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string, envFilePath string) {
 		called = true
 	}
 
@@ -132,7 +132,7 @@ func TestHandleRollingUpdateStub(t *testing.T) {
 	}
 	filePath := "test-compose.yml"
 
-	handleRollingUpdate(cfg, filePath)
+	handleRollingUpdate(cfg, filePath, "")
 
 	w.Close()
 	os.Stdout = origStdout

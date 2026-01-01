@@ -30,9 +30,10 @@ type tagWithValue struct {
 
 // SyncOptions holds configuration for a sync run.
 type SyncOptions struct {
-	FilePath string        // Path to docker-compose.yml
-	Interval time.Duration // How often to check for updates
-	Verbose  bool          // Enable verbose logging
+	FilePath    string        // Path to docker-compose.yml
+	Interval    time.Duration // How often to check for updates
+	Verbose     bool          // Enable verbose logging
+	EnvFilePath string        // Path to .env file (CRITICAL for preserving environment variables)
 }
 
 // StartSync runs the main synchronization loop.
@@ -57,18 +58,19 @@ func StartSync(opts SyncOptions) {
 
 	interval := opts.Interval
 	verbose := opts.Verbose
+	envFilePath := opts.EnvFilePath
 
 	logVerbose(verbose, "Starting synchronization process for all supported registries...")
 
 	// check immediately
-	checkAndUpdateServices(filePath, verbose)
+	checkAndUpdateServices(filePath, verbose, envFilePath)
 
 	// Periodic check
 	ticker := time.NewTicker(interval)
 	for {
 		select {
 		case <-ticker.C:
-			checkAndUpdateServices(filePath, verbose)
+			checkAndUpdateServices(filePath, verbose, envFilePath)
 		}
 	}
 }
@@ -104,9 +106,9 @@ type DOTag struct {
 // checkAndUpdateServices loads the compose file, checks for new tags,
 // and updates/restarts services as needed. Also starts any new services
 // defined in the compose file that aren't currently running.
-func checkAndUpdateServices(filePath string, verbose bool) {
+func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 	// First, check for new services that need to be started
-	startNewServices(filePath, verbose)
+	startNewServices(filePath, verbose, envFilePath)
 	composeFile, err := os.ReadFile(filePath)
 	if err != nil {
 		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file: %s\n", err), true)
@@ -292,7 +294,7 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 			// Create registry authentication for Docker login
 			registryAuth := createRegistryAuth(info.Type, cfg)
 
-			if err := replica.UpdateDockerComposeAndRestart(serviceName, selectedTag, filePath, verbose, registryAuth); err == nil {
+			if err := replica.UpdateDockerComposeAndRestart(serviceName, selectedTag, filePath, verbose, registryAuth, envFilePath); err == nil {
 				removeUnusedDockerImages(verbose)
 			} else {
 				logVerbose(verbose, fmt.Sprintf("Error updating service %s: %s", serviceName, err), true)
@@ -306,7 +308,8 @@ func checkAndUpdateServices(filePath string, verbose bool) {
 // startNewServices checks for services defined in the compose file that aren't
 // currently running and starts them. This handles the case where new services
 // are added to the compose file after initial deployment.
-func startNewServices(filePath string, verbose bool) {
+// CRITICAL: envFilePath must be passed to preserve environment variables.
+func startNewServices(filePath string, verbose bool, envFilePath string) {
 	composeFile, err := os.ReadFile(filePath)
 	if err != nil {
 		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file for new service check: %s", err), true)
@@ -358,7 +361,9 @@ func startNewServices(filePath string, verbose bool) {
 		}
 
 		// Start the new service
-		cmd := exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", serviceName)
+		// CRITICAL: Use BuildDockerComposeArgs to ensure --env-file is passed
+		cmdArgs := replica.BuildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, false)
+		cmd := exec.Command("docker", cmdArgs...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			logVerbose(verbose, fmt.Sprintf("Failed to start new service %s: %s, error: %v", serviceName, string(output), err), true)

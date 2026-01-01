@@ -69,12 +69,12 @@ func TestCheckAndUpdateServices_InvalidFile(t *testing.T) {
 		return errors.New("unmarshal error")
 	}
 	// Should not panic or crash
-	checkAndUpdateServices(tmpFile.Name(), false)
+	checkAndUpdateServices(tmpFile.Name(), false, "")
 	assert.True(t, called, "YamlUnmarshal should be called")
 }
 
 func TestUpdateDockerComposeAndRestart_MissingFile(t *testing.T) {
-	err := replica.UpdateDockerComposeAndRestart("svc", "tag", "nonexistent-file.yml", false, nil)
+	err := replica.UpdateDockerComposeAndRestart("svc", "tag", "nonexistent-file.yml", false, nil, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read docker-compose file")
 }
@@ -110,7 +110,7 @@ services:
 	}
 
 	// Should not panic or crash
-	checkAndUpdateServices(tmpFile.Name(), false)
+	checkAndUpdateServices(tmpFile.Name(), false, "")
 	assert.Equal(t, 1, calls, "YamlUnmarshal should be called once for valid YAML")
 }
 

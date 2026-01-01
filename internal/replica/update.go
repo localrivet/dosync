@@ -20,7 +20,8 @@ type RegistryAuth struct {
 // UpdateDockerComposeAndRestart updates the image tag for a service in the compose file and restarts the service using docker compose.
 // This function ONLY updates the compose file and runs docker compose up.
 // Rolling updates, health checks, and rollback are handled by the strategy system (internal/strategy/*).
-func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose bool, registryAuth *RegistryAuth) error {
+// envFilePath is the path to the .env file to pass to docker compose (critical for preserving environment variables).
+func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose bool, registryAuth *RegistryAuth, envFilePath string) error {
 	composeDir := filepath.Dir(filePath)
 	backupFile := filepath.Join(composeDir, "docker-compose.backup.yml")
 	input, err := os.ReadFile(filePath)
@@ -121,7 +122,9 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
 	// Use --force-recreate to handle stale containers that block recreation
 	// Use --project-name to ensure consistent network naming
-	cmd := exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+	// CRITICAL: Use --env-file to preserve environment variables from .env file
+	cmdArgs := buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, true)
+	cmd := exec.Command("docker", cmdArgs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// If we hit "container name already in use", try removing the stale container and retry
@@ -137,7 +140,7 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 				rmCmd.Run() // Ignore error - best effort removal
 			}
 			// Retry the compose up with project name
-			cmd = exec.Command("docker", "compose", "-f", filePath, "--project-name", projectName, "up", "-d", "--no-deps", "--force-recreate", serviceName)
+			cmd = exec.Command("docker", cmdArgs...)
 			output, err = cmd.CombinedOutput()
 		}
 		if err != nil {
@@ -222,4 +225,31 @@ func extractProjectNameFromCompose(composeContent []byte, serviceName string) st
 	}
 
 	return ""
+}
+
+// buildDockerComposeArgs builds the arguments for docker compose up command.
+// CRITICAL: This function ensures --env-file is passed when envFilePath is provided,
+// which is essential for preserving environment variables during service restarts.
+func buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName string, forceRecreate bool) []string {
+	args := []string{"compose", "-f", filePath, "--project-name", projectName}
+
+	// CRITICAL: Add --env-file flag if envFilePath is provided
+	// This ensures environment variables from .env file are preserved during restarts
+	if envFilePath != "" {
+		args = append(args, "--env-file", envFilePath)
+	}
+
+	args = append(args, "up", "-d", "--no-deps")
+	if forceRecreate {
+		args = append(args, "--force-recreate")
+	}
+	args = append(args, serviceName)
+
+	return args
+}
+
+// BuildDockerComposeArgs is the exported version for use by other packages (e.g., syncer).
+// CRITICAL: This function ensures --env-file is passed when envFilePath is provided.
+func BuildDockerComposeArgs(filePath, projectName, envFilePath, serviceName string, forceRecreate bool) []string {
+	return buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, forceRecreate)
 }

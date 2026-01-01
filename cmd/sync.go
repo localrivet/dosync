@@ -92,19 +92,21 @@ For full documentation on configuration options, see the README.md file.`,
 			fmt.Printf("[Rolling Update] Starting continuous rolling update mode with %s interval\n", interval)
 
 			// Run immediately on startup
-			handleRollingUpdate(rollingCfg, filePath)
+			// CRITICAL: Pass envFilePath to preserve environment variables during restarts
+			handleRollingUpdate(rollingCfg, filePath, envFilePath)
 
 			// Then run on each tick
 			for range ticker.C {
-				handleRollingUpdate(rollingCfg, filePath)
+				handleRollingUpdate(rollingCfg, filePath, envFilePath)
 			}
 			return
 		}
 
 		opts := syncer.SyncOptions{
-			FilePath: filePath,
-			Interval: interval,
-			Verbose:  verbose,
+			FilePath:    filePath,
+			Interval:    interval,
+			Verbose:     verbose,
+			EnvFilePath: envFilePath, // CRITICAL: Pass env file path to preserve environment variables
 		}
 		syncer.StartSync(opts)
 	},
@@ -219,7 +221,8 @@ func buildRollingUpdateConfig(cmd *cobra.Command) (*RollingUpdateConfig, error) 
 }
 
 // handleRollingUpdate is a function variable for rolling update logic (overridable in tests)
-var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
+// CRITICAL: envFilePath must be passed to preserve environment variables during restarts
+var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string, envFilePath string) {
 	// If compose file does not exist, treat this as stub (used in tests)
 	if _, err := os.Stat(filePath); err != nil {
 		fmt.Printf("[Rolling Update] Stub: would perform rolling update on %s\n", filePath)
@@ -282,6 +285,8 @@ var handleRollingUpdate = func(cfg *RollingUpdateConfig, filePath string) {
 	}
 	// Enable verbose logging if the global verbose flag is set
 	replicaManager.SetVerbose(verbose)
+	// CRITICAL: Set env file path to preserve environment variables during restarts
+	replicaManager.SetEnvFilePath(envFilePath)
 
 	// Prepare strategy config
 	strategyCfg := strategy.StrategyConfig{

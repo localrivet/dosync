@@ -25,6 +25,10 @@ type ReplicaManager struct {
 	// composeFile is the path to the Docker Compose file
 	composeFile string
 
+	// envFilePath is the path to the .env file for docker compose
+	// CRITICAL: This must be passed to docker compose to preserve environment variables
+	envFilePath string
+
 	// verbose enables detailed logging of operations
 	verbose bool
 }
@@ -76,6 +80,17 @@ func (rm *ReplicaManager) UnregisterDetector(replicaType ReplicaType) bool {
 // SetVerbose enables or disables verbose logging for all operations
 func (rm *ReplicaManager) SetVerbose(verbose bool) {
 	rm.verbose = verbose
+}
+
+// SetEnvFilePath sets the path to the .env file for docker compose commands.
+// CRITICAL: This must be called to ensure environment variables are preserved during restarts.
+func (rm *ReplicaManager) SetEnvFilePath(envFilePath string) {
+	rm.envFilePath = envFilePath
+}
+
+// GetEnvFilePath returns the path to the .env file
+func (rm *ReplicaManager) GetEnvFilePath() string {
+	return rm.envFilePath
 }
 
 // GetServiceReplicas returns all replicas for a specific service
@@ -150,7 +165,8 @@ func (rm *ReplicaManager) detectReplicas() error {
 func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 	// Call UpdateDockerComposeAndRestart directly (same package)
 	// Use the manager's verbose setting to enable detailed error logging
-	err := UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, rm.verbose, nil)
+	// CRITICAL: Pass envFilePath to preserve environment variables during restart
+	err := UpdateDockerComposeAndRestart(r.ServiceName, newImageTag, rm.composeFile, rm.verbose, nil, rm.envFilePath)
 	if err != nil {
 		return err
 	}
