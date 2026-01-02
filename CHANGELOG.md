@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.22] - 2026-01-02
+
+### Fixed
+- **CRITICAL**: Respect compose file `name:` field for project name
+- Previously DOSync would use directory name, causing containers to be created on wrong network
+- Now correctly uses `name:` field from compose.yaml (Docker Compose v2.x standard)
+- Prevents "dns lookup error" issues when services can't find each other
+
+### Technical Details
+- Updated `extractProjectNameFromCompose()` to check `name:` field first
+- Priority order: `name:` field → container_name patterns → directory name
+- Only passes `--project-name` flag when needed, allowing Docker Compose native resolution
+
 ## [v0.3.21] - 2026-01-02
 
 ### Added
