@@ -42,7 +42,11 @@ type SyncOptions struct {
 func StartSync(opts SyncOptions) {
 	// Scan the compose file for all registry types
 	filePath := opts.FilePath
-	composeFile, err := os.ReadFile(filePath)
+	envFilePath := opts.EnvFilePath
+	verbose := opts.Verbose
+
+	// Use docker compose config to resolve environment variables
+	composeFile, err := getResolvedComposeConfig(filePath, envFilePath, verbose)
 	if err != nil {
 		fmt.Printf("Failed to read docker-compose file: %s\n", err)
 		return
@@ -57,8 +61,6 @@ func StartSync(opts SyncOptions) {
 	// (No longer handled here; registry credentials are loaded from config/env as needed)
 
 	interval := opts.Interval
-	verbose := opts.Verbose
-	envFilePath := opts.EnvFilePath
 
 	logVerbose(verbose, "Starting synchronization process for all supported registries...")
 
@@ -109,7 +111,9 @@ type DOTag struct {
 func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 	// First, check for new services that need to be started
 	startNewServices(filePath, verbose, envFilePath)
-	composeFile, err := os.ReadFile(filePath)
+
+	// Use docker compose config to resolve environment variables (e.g., ${GITHUB_REPOSITORY})
+	composeFile, err := getResolvedComposeConfig(filePath, envFilePath, verbose)
 	if err != nil {
 		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file: %s\n", err), true)
 		return
@@ -310,7 +314,8 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 // are added to the compose file after initial deployment.
 // CRITICAL: envFilePath must be passed to preserve environment variables.
 func startNewServices(filePath string, verbose bool, envFilePath string) {
-	composeFile, err := os.ReadFile(filePath)
+	// Use docker compose config to resolve environment variables
+	composeFile, err := getResolvedComposeConfig(filePath, envFilePath, verbose)
 	if err != nil {
 		logVerbose(verbose, fmt.Sprintf("Failed to read docker-compose file for new service check: %s", err), true)
 		return
@@ -472,6 +477,32 @@ func getActualRunningImageTag(serviceName string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no image found for service %s", serviceName)
+}
+
+// getResolvedComposeConfig runs `docker compose config` to get the compose file
+// with all environment variables substituted. This handles ${VAR} patterns,
+// defaults like ${VAR:-default}, and all Docker Compose interpolation features.
+// Falls back to raw file read if docker compose config fails.
+func getResolvedComposeConfig(filePath string, envFilePath string, verbose bool) ([]byte, error) {
+	args := []string{"compose", "-f", filePath}
+	if envFilePath != "" {
+		args = append(args, "--env-file", envFilePath)
+	}
+	args = append(args, "config")
+
+	cmd := exec.Command("docker", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		// Log the error but fall back to raw file read for backward compatibility
+		logVerbose(verbose, fmt.Sprintf("Warning: docker compose config failed: %v, stderr: %s. Falling back to raw file read.", err, stderr.String()))
+		return os.ReadFile(filePath)
+	}
+
+	return stdout.Bytes(), nil
 }
 
 // removeUnusedDockerImages prunes unused Docker images using the Docker CLI.
