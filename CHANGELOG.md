@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.3.23] - 2026-01-02
+
+### Fixed
+- **Compose file tag sync**: DOSync now updates compose file even when container is already running correct version
+- Previously compose file could have stale tags, causing issues on server restart
+- Now detects tag mismatch and syncs compose file without restarting container
+
+### Technical Details
+- Added `updateComposeFileImageTag()` function for tag-only updates
+- Uses `LastIndex` for colon handling to support registry ports (e.g., `registry:5000/repo:tag`)
+- Logs sync actions with "SYNC:" prefix for visibility
+
 ## [v0.3.22] - 2026-01-02
 
 ### Fixed
