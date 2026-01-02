@@ -1,9 +1,23 @@
 # Changelog
 
+## [v0.3.21] - 2026-01-02
+
+### Added
+- **Container Reconciliation**: DOSync now checks if all services defined in compose file are running and restarts any stopped/missing containers
+- **Kubernetes-style reconciliation**: Ensures desired state matches actual state every sync interval
+- **Automatic recovery**: If a container crashes between deployments, DOSync will restart it on the next sync
+
+### Technical Details
+- Added `reconcileStoppedContainers()` function to syncer
+- Runs at end of each sync interval after image update checks
+- Respects `skip: true` configuration - skipped services won't be reconciled
+- Uses `--env-file` for proper environment variable loading during restarts
+
 ## [v0.3.20] - 2026-01-02
 
 ### Added
-- Latest release of DOSync
+- **Proactive container cleanup**: DOSync now removes stale containers before deployment
+- Prevents "container name already in use" errors from orphaned containers
 - See previous releases for full feature list
 
 ## [v0.3.19] - 2026-01-02
