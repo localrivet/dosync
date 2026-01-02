@@ -110,10 +110,12 @@ services:
 	}
 
 	// Should not panic or crash
-	// Note: calls is 2 because checkAndUpdateServices first calls startNewServices
-	// (which parses the compose file), then parses it again for the main update check
+	// Note: calls is 3 because checkAndUpdateServices:
+	// 1. Calls startNewServices (parses compose file)
+	// 2. Parses compose file for the main update check
+	// 3. Calls reconcileStoppedContainers (parses compose file again)
 	checkAndUpdateServices(tmpFile.Name(), false, "")
-	assert.Equal(t, 2, calls, "YamlUnmarshal should be called twice (startNewServices + checkAndUpdateServices)")
+	assert.Equal(t, 3, calls, "YamlUnmarshal should be called 3 times (startNewServices + checkAndUpdateServices + reconcileStoppedContainers)")
 }
 
 func TestSelectTagByImagePolicy(t *testing.T) {

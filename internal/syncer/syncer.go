@@ -307,6 +307,9 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 			logVerbose(verbose, fmt.Sprintf("Service %s is already running the latest tag: %s", serviceName, currentImageTag))
 		}
 	}
+
+	// Reconcile: restart any stopped containers that should be running
+	reconcileStoppedContainers(filePath, verbose, envFilePath)
 }
 
 // startNewServices checks for services defined in the compose file that aren't
@@ -424,6 +427,67 @@ func extractProjectNameFromComposeContent(content []byte) string {
 		return string(matches[1])
 	}
 	return ""
+}
+
+// reconcileStoppedContainers checks if all services defined in the compose file
+// are running and restarts any that are stopped/missing. This provides Kubernetes-style
+// reconciliation to ensure desired state matches actual state.
+func reconcileStoppedContainers(filePath string, verbose bool, envFilePath string) {
+	// Get resolved compose config
+	composeFile, err := getResolvedComposeConfig(filePath, envFilePath, verbose)
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Reconciliation: Failed to read compose file: %s", err), true)
+		return
+	}
+
+	var compose DockerCompose
+	if err := YamlUnmarshal(composeFile, &compose); err != nil {
+		logVerbose(verbose, fmt.Sprintf("Reconciliation: Failed to parse compose file: %s", err), true)
+		return
+	}
+
+	cfg := config.GetConfig()
+	runningServices, err := getRunningServices()
+	if err != nil {
+		logVerbose(verbose, fmt.Sprintf("Reconciliation: Failed to get running services: %s", err), true)
+		return
+	}
+
+	for serviceName, service := range compose.Services {
+		// Skip services without images (build-only services)
+		if service.Image == "" {
+			continue
+		}
+
+		// Skip services configured to be skipped
+		if cfg != nil && cfg.Services != nil {
+			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
+				continue
+			}
+		}
+
+		// Check if service is running
+		if isServiceRunning(serviceName, runningServices) {
+			continue
+		}
+
+		// Service is NOT running - restart it
+		logVerbose(verbose, fmt.Sprintf("RECONCILIATION: Service %s is not running, restarting...", serviceName), true)
+
+		projectName := extractProjectNameFromComposeContent(composeFile)
+		if projectName == "" {
+			projectName = "app"
+		}
+
+		cmdArgs := replica.BuildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, false)
+		cmd := exec.Command("docker", cmdArgs...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logVerbose(verbose, fmt.Sprintf("RECONCILIATION: Failed to restart %s: %s, error: %v", serviceName, string(output), err), true)
+		} else {
+			logVerbose(verbose, fmt.Sprintf("RECONCILIATION: Successfully restarted %s", serviceName), true)
+		}
+	}
 }
 
 // extractDORepositoryInfo parses a DigitalOcean image reference and returns registry and repo names.
