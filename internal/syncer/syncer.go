@@ -417,10 +417,21 @@ func isServiceRunning(serviceName string, runningContainers []string) bool {
 	return false
 }
 
-// extractProjectNameFromComposeContent extracts project name from compose file content
-// by looking for container_name patterns like "projectname_servicename"
+// extractProjectNameFromComposeContent extracts project name from compose file content.
+// Priority order:
+// 1. Top-level `name:` field in compose.yaml (Docker Compose v2.x standard)
+// 2. container_name patterns like "projectname_servicename"
+// 3. Falls back to empty string (caller should use directory name or "app")
 func extractProjectNameFromComposeContent(content []byte) string {
-	// Look for container_name patterns
+	// Priority 1: Check for top-level `name:` field (Docker Compose v2.x standard)
+	// This is the correct way to define project name in compose.yaml
+	nameRe := regexp.MustCompile(`(?m)^name:\s*["']?([a-zA-Z0-9_-]+)["']?\s*$`)
+	nameMatches := nameRe.FindSubmatch(content)
+	if len(nameMatches) >= 2 {
+		return string(nameMatches[1])
+	}
+
+	// Priority 2: Look for container_name patterns
 	re := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_(?:app|postgres|dosync|web|api|db)\s*[\r\n]`)
 	matches := re.FindSubmatch(content)
 	if len(matches) >= 2 {

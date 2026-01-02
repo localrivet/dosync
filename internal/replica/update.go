@@ -234,12 +234,22 @@ func extractContainerNameFromError(errorOutput string) string {
 	return ""
 }
 
-// extractProjectNameFromCompose extracts the project name from container_name in compose file
-// Looks for patterns like "container_name: almatuck_app" and extracts "almatuck"
-// This is needed because DOSync runs from /app inside the container, so we can't use
-// the compose file directory to determine the project name
+// extractProjectNameFromCompose extracts the project name from the compose file.
+// Priority order:
+// 1. Top-level `name:` field in compose.yaml (Docker Compose v2.x standard)
+// 2. container_name patterns like "projectname_servicename"
+// 3. Falls back to empty string (caller will use directory name)
 func extractProjectNameFromCompose(composeContent []byte, serviceName string) string {
-	// Look for container_name pattern: container_name: projectname_servicename
+	// Priority 1: Check for top-level `name:` field (Docker Compose v2.x standard)
+	// This is the correct way to define project name in compose.yaml
+	// Pattern matches: "name: ballast-app" at the start of a line
+	nameRe := regexp.MustCompile(`(?m)^name:\s*["']?([a-zA-Z0-9_-]+)["']?\s*$`)
+	nameMatches := nameRe.FindSubmatch(composeContent)
+	if len(nameMatches) >= 2 {
+		return string(nameMatches[1])
+	}
+
+	// Priority 2: Look for container_name pattern: container_name: projectname_servicename
 	// Examples: "almatuck_app", "crowdgains_postgres", "patternadvisor_dosync"
 	re := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_` + regexp.QuoteMeta(serviceName) + `\s*[\r\n]`)
 	matches := re.FindSubmatch(composeContent)
@@ -247,7 +257,7 @@ func extractProjectNameFromCompose(composeContent []byte, serviceName string) st
 		return string(matches[1])
 	}
 
-	// Also try to find any container_name and extract prefix
+	// Priority 3: Try to find any container_name and extract prefix
 	// This handles cases where serviceName doesn't match exactly (e.g., service "app" vs container "almatuck_app")
 	reAny := regexp.MustCompile(`container_name:\s*([a-zA-Z0-9_-]+)_(?:app|postgres|dosync|web|api|db)\s*[\r\n]`)
 	matchesAny := reAny.FindSubmatch(composeContent)
@@ -261,8 +271,18 @@ func extractProjectNameFromCompose(composeContent []byte, serviceName string) st
 // buildDockerComposeArgs builds the arguments for docker compose up command.
 // CRITICAL: This function ensures --env-file is passed when envFilePath is provided,
 // which is essential for preserving environment variables during service restarts.
+// NOTE: Only passes --project-name if projectName is non-empty. If empty, Docker Compose
+// will use the `name:` field from compose.yaml or fall back to directory name.
 func buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName string, forceRecreate bool) []string {
-	args := []string{"compose", "-f", filePath, "--project-name", projectName}
+	args := []string{"compose", "-f", filePath}
+
+	// Only pass --project-name if we have an explicit project name to use.
+	// If empty, Docker Compose will use its native resolution:
+	// 1. `name:` field in compose.yaml (Docker Compose v2.x standard)
+	// 2. Directory name as fallback
+	if projectName != "" {
+		args = append(args, "--project-name", projectName)
+	}
 
 	// CRITICAL: Add --env-file flag if envFilePath is provided
 	// This ensures environment variables from .env file are preserved during restarts
