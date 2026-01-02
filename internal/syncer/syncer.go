@@ -6,6 +6,7 @@
 package syncer
 
 import (
+	"bufio"
 	"bytes"
 	"dosync/internal/config"
 	"dosync/internal/registry"
@@ -292,6 +293,9 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 			}
 		}
 
+		// Get the tag from the compose file (before we potentially modified it with actualRunningTag)
+		composeFileTag := extractTagFromImage(service.Image)
+
 		if selectedTag != currentImageTag {
 			logVerbose(verbose, fmt.Sprintf("Updating service %s to new tag: %s (current: %s)", serviceName, selectedTag, currentImageTag), true)
 
@@ -302,6 +306,14 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 				removeUnusedDockerImages(verbose)
 			} else {
 				logVerbose(verbose, fmt.Sprintf("Error updating service %s: %s", serviceName, err), true)
+			}
+		} else if composeFileTag != selectedTag {
+			// CRITICAL: Compose file tag differs from what's running/selected
+			// Update compose file to match, so server restarts use correct version
+			logVerbose(verbose, fmt.Sprintf("SYNC: Updating compose file for %s: %s -> %s (container already running correct version)",
+				serviceName, composeFileTag, selectedTag), true)
+			if err := updateComposeFileImageTag(filePath, serviceName, selectedTag); err != nil {
+				logVerbose(verbose, fmt.Sprintf("Error syncing compose file for %s: %s", serviceName, err), true)
 			}
 		} else {
 			logVerbose(verbose, fmt.Sprintf("Service %s is already running the latest tag: %s", serviceName, currentImageTag))
@@ -514,6 +526,93 @@ func extractDORepositoryInfo(image string) (string, string, error) {
 	repoName := strings.Split(repoNameWithTag, ":")[0]
 
 	return registryName, repoName, nil
+}
+
+// updateComposeFileImageTag updates the image tag for a service in the compose file
+// WITHOUT restarting the container. This is used to sync the compose file when the
+// container is already running the correct version but the file has an older tag.
+func updateComposeFileImageTag(filePath, serviceName, newTag string) error {
+	input, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read compose file: %w", err)
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var updatedLines []string
+	imageUpdated := false
+	scanner := bufio.NewScanner(file)
+
+	serviceRegex := regexp.MustCompile(`(?m)^(\s*)([a-zA-Z0-9_-]+):\s*$`)
+	imageRegex := regexp.MustCompile(`(?m)^(\s*)image:(\s*)(.+)$`)
+
+	currentService := ""
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if matches := serviceRegex.FindStringSubmatch(line); matches != nil {
+			currentService = matches[2]
+			updatedLines = append(updatedLines, line)
+			continue
+		}
+
+		if currentService == serviceName {
+			if matches := imageRegex.FindStringSubmatch(line); matches != nil {
+				imageIndent := matches[1]
+				imageValue := matches[3]
+
+				// Find the last colon to handle registry ports (e.g., registry:5000/repo:tag)
+				lastColonIdx := strings.LastIndex(imageValue, ":")
+				if lastColonIdx > 0 {
+					imageBase := imageValue[:lastColonIdx]
+					updatedImage := imageBase + ":" + newTag
+					updatedLines = append(updatedLines, imageIndent+"image: "+updatedImage)
+					imageUpdated = true
+					continue
+				}
+			}
+		}
+
+		updatedLines = append(updatedLines, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	if !imageUpdated {
+		return fmt.Errorf("image line for service %s not found", serviceName)
+	}
+
+	// Write back to file
+	outputFile, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer outputFile.Close()
+
+	writer := bufio.NewWriter(outputFile)
+	for _, line := range updatedLines {
+		fmt.Fprintln(writer, line)
+	}
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	// Verify the update by re-reading
+	updatedContent, err := os.ReadFile(filePath)
+	if err == nil && !strings.Contains(string(updatedContent), serviceName) {
+		// Something went wrong, restore from input
+		os.WriteFile(filePath, input, 0644)
+		return fmt.Errorf("compose file update verification failed")
+	}
+
+	return nil
 }
 
 // extractTagFromImage returns the tag from an image reference, or "latest" if not present.
