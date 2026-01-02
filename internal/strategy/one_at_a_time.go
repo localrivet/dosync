@@ -163,7 +163,7 @@ func (o *OneAtATimeDeployer) waitForHealth(ctx context.Context, r replica.Replic
 		requiredSuccesses = 1 // Default to at least one success
 	}
 
-	// Count consecutive failures
+	// Count consecutive failures (only actual failures, not "starting" status)
 	failureCount := 0
 	allowedFailures := o.Config.HealthCheck.FailureThreshold
 	if allowedFailures <= 0 {
@@ -175,7 +175,8 @@ func (o *OneAtATimeDeployer) waitForHealth(ctx context.Context, r replica.Replic
 		case <-ctx.Done():
 			return false, ctx.Err()
 		case <-ticker.C:
-			healthy, err := o.HealthChecker.Check(r)
+			// Use CheckWithDetails to get Starting status
+			result, err := o.HealthChecker.CheckWithDetails(r)
 
 			if err != nil {
 				fmt.Printf("Health check error for replica %s: %v\n", r.ContainerID, err)
@@ -189,7 +190,7 @@ func (o *OneAtATimeDeployer) waitForHealth(ctx context.Context, r replica.Replic
 				continue
 			}
 
-			if healthy {
+			if result.Healthy {
 				successCount++
 				failureCount = 0 // Reset failure counter
 
@@ -201,8 +202,14 @@ func (o *OneAtATimeDeployer) waitForHealth(ctx context.Context, r replica.Replic
 
 				fmt.Printf("Healthy check #%d/%d for replica %s\n",
 					successCount, requiredSuccesses, r.ContainerID)
+			} else if result.Starting {
+				// Container is in Docker's start-period grace phase.
+				// Don't count this as a failure - just wait for it to finish starting.
+				fmt.Printf("Replica %s is still starting (in start-period grace phase)\n", r.ContainerID)
+				// Don't reset failure counter - starting is neutral, not a success
 			} else {
-				fmt.Printf("Replica %s is not yet healthy\n", r.ContainerID)
+				// Actually unhealthy (not just starting)
+				fmt.Printf("Replica %s is not healthy: %s\n", r.ContainerID, result.Message)
 				failureCount++
 				successCount = 0 // Reset success counter
 

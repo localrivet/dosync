@@ -105,6 +105,7 @@ func (d *DockerHealthChecker) CheckWithDetails(replica replica.Replica) (HealthC
 
 	// Determine the health status based on the Docker health status
 	var healthy bool
+	var starting bool
 	var message string
 
 	switch containerInfo.State.Health.Status {
@@ -115,9 +116,12 @@ func (d *DockerHealthChecker) CheckWithDetails(replica replica.Replica) (HealthC
 		healthy = false
 		message = fmt.Sprintf("Container %s is unhealthy", replica.ContainerID)
 	case container.Starting:
-		// Container is still in the starting phase, consider it unhealthy for now
+		// Container is in Docker's start-period grace phase.
+		// Mark as starting (not a failure) so the caller can handle appropriately.
+		// This prevents premature health check failures for containers with long start-periods.
 		healthy = false
-		message = fmt.Sprintf("Container %s is starting", replica.ContainerID)
+		starting = true
+		message = fmt.Sprintf("Container %s is starting (in start-period)", replica.ContainerID)
 	default:
 		healthy = false
 		message = fmt.Sprintf("Container %s has unknown health status: %s", replica.ContainerID, containerInfo.State.Health.Status)
@@ -129,6 +133,7 @@ func (d *DockerHealthChecker) CheckWithDetails(replica replica.Replica) (HealthC
 	// Return the health check result
 	return HealthCheckResult{
 		Healthy:   healthy,
+		Starting:  starting,
 		Message:   message,
 		Timestamp: time.Now(),
 	}, nil

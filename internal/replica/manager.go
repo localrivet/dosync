@@ -163,6 +163,9 @@ func (rm *ReplicaManager) detectReplicas() error {
 
 // UpdateReplica updates the given replica to the specified new image tag
 func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
+	// Save the current image tag for potential rollback
+	r.PreviousImageTag = r.ImageTag
+
 	// Call UpdateDockerComposeAndRestart directly (same package)
 	// Use the manager's verbose setting to enable detailed error logging
 	// CRITICAL: Pass envFilePath to preserve environment variables during restart
@@ -170,6 +173,9 @@ func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 	if err != nil {
 		return err
 	}
+
+	// Update the replica's current image tag
+	r.ImageTag = newImageTag
 
 	// After successful update, fetch the new container ID
 	// The rolling update created a new container, so we need to refresh the replica info
@@ -214,6 +220,58 @@ func (rm *ReplicaManager) UpdateReplica(r *Replica, newImageTag string) error {
 
 // RollbackReplica rolls back the given replica to the previous image/tag
 func (rm *ReplicaManager) RollbackReplica(r *Replica) error {
-	// Rollback logic must be handled by the orchestrator (e.g., rolling update controller)
-	return fmt.Errorf("RollbackReplica is not implemented in ReplicaManager; handle rollback in the orchestrator layer")
+	// Check if we have a previous image tag to rollback to
+	if r.PreviousImageTag == "" {
+		return fmt.Errorf("no previous image tag available for rollback of replica %s", r.ContainerID)
+	}
+
+	fmt.Printf("Rolling back replica %s from %s to %s\n", r.ContainerID, r.ImageTag, r.PreviousImageTag)
+
+	// Use the same update mechanism but with the previous tag
+	err := UpdateDockerComposeAndRestart(r.ServiceName, r.PreviousImageTag, rm.composeFile, rm.verbose, nil, rm.envFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to rollback replica %s: %w", r.ContainerID, err)
+	}
+
+	// Swap the tags back
+	r.ImageTag = r.PreviousImageTag
+	r.PreviousImageTag = ""
+
+	// After successful rollback, fetch the new container ID
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client for rollback: %w", err)
+	}
+	defer cli.Close()
+
+	// Find the new container for this service
+	containers, err := cli.ContainerList(context.Background(), container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", fmt.Sprintf("com.docker.compose.service=%s", r.ServiceName)),
+		),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list containers after rollback: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return fmt.Errorf("no containers found for service %s after rollback", r.ServiceName)
+	}
+
+	// Find the newest container
+	var newestContainer *types.Container
+	for i := range containers {
+		c := &containers[i]
+		if newestContainer == nil || c.Created > newestContainer.Created {
+			newestContainer = c
+		}
+	}
+
+	// Update the replica's container ID
+	r.ContainerID = newestContainer.ID
+	r.Status = newestContainer.State
+
+	fmt.Printf("Rollback successful for replica %s (new container: %s)\n", r.ServiceName, r.ContainerID[:12])
+	return nil
 }

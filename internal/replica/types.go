@@ -32,6 +32,9 @@ type Replica struct {
 	// ImageTag is the specific tag of the image used by this replica
 	ImageTag string
 
+	// PreviousImageTag stores the image tag before an update, used for rollback
+	PreviousImageTag string
+
 	// IPAddress is the IP address assigned to this replica (added for task 10.6)
 	IPAddress string
 

@@ -31,6 +31,11 @@ type HealthCheckResult struct {
 	// Healthy indicates whether the check passed
 	Healthy bool
 
+	// Starting indicates the container is in Docker's start-period grace phase.
+	// When true, the container is not yet healthy but should not be counted as a failure.
+	// This allows containers with long start-periods (e.g., 60s) to initialize properly.
+	Starting bool
+
 	// Message provides additional details about the health check result
 	Message string
 
