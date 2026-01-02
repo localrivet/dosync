@@ -118,6 +118,10 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	}
 	logVerbose(verbose, fmt.Sprintf("Starting docker compose up for service: %s (project: %s)", serviceName, projectName))
 
+	// Proactively remove stale containers before attempting docker compose up
+	// This prevents "container name already in use" errors from orphaned containers
+	removeStaleContainers(projectName, serviceName, verbose)
+
 	// Simply run docker compose up to start the new container
 	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
 	// Use --force-recreate to handle stale containers that block recreation
@@ -188,6 +192,33 @@ func dockerLogin(server, username, password string, verbose bool) error {
 func logVerbose(verbose bool, message string) {
 	if verbose {
 		fmt.Println(message)
+	}
+}
+
+// removeStaleContainers proactively removes any containers matching the service pattern
+// before attempting docker compose up. This prevents "container name already in use" errors
+// caused by orphaned containers that weren't properly cleaned up.
+func removeStaleContainers(projectName, serviceName string, verbose bool) {
+	// Build pattern to match: projectname_servicename and projectname_servicename-N
+	basePattern := fmt.Sprintf("%s_%s", projectName, serviceName)
+
+	// List containers matching the pattern (including stopped ones)
+	cmd := exec.Command("docker", "ps", "-a", "--filter",
+		fmt.Sprintf("name=^%s", basePattern), "--format", "{{.Names}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return // Best effort - continue even if listing fails
+	}
+
+	// Remove each matching container
+	containers := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, container := range containers {
+		if container == "" {
+			continue
+		}
+		logVerbose(verbose, fmt.Sprintf("Removing stale container: %s", container))
+		rmCmd := exec.Command("docker", "rm", "-f", container)
+		rmCmd.Run() // Ignore error - best effort
 	}
 }
 
