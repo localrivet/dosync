@@ -290,7 +290,12 @@ func buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName stri
 		args = append(args, "--env-file", envFilePath)
 	}
 
-	args = append(args, "up", "-d", "--no-deps")
+	// Note: We intentionally do NOT use --no-deps here.
+	// This allows Docker Compose to respect depends_on health checks.
+	// Without this, services may start before their dependencies are ready,
+	// causing DNS lookup failures (e.g., "lookup postgres on 127.0.0.11:53: server misbehaving").
+	// Rollback operations use their own command with --no-deps to avoid cascading restarts.
+	args = append(args, "up", "-d")
 	if forceRecreate {
 		args = append(args, "--force-recreate")
 	}

@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.25] - 2026-01-03
+
+### Fixed
+- **CRITICAL**: Respect `depends_on` health checks during container updates
+- Previously used `--no-deps` flag which skipped dependency health checks
+- Containers now wait for dependencies (e.g., postgres) to be healthy before starting
+- Fixes DNS lookup failures like "lookup postgres on 127.0.0.11:53: server misbehaving"
+
+### Technical Details
+- Removed `--no-deps` from `buildDockerComposeArgs()` in `internal/replica/update.go`
+- Rollback operations retain `--no-deps` to avoid cascading restarts
+- Docker Compose now properly waits for `depends_on: condition: service_healthy`
+
 ## [v0.3.24] - 2026-01-03
 
 ### Fixed
