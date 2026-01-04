@@ -146,6 +146,14 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 			continue
 		}
 
+		// Check for unresolved environment variables in the image URL
+		if strings.Contains(service.Image, "${") {
+			logVerbose(verbose, fmt.Sprintf("ERROR: Service %s has unresolved environment variable in image: %s. "+
+				"Ensure the .env file is mounted to DOSync container and ENV_FILE environment variable is set. "+
+				"Example: volumes: ['.env:/app/.env:ro'] and environment: [ENV_FILE=/app/.env]", serviceName, service.Image), true)
+			continue
+		}
+
 		// Check if service should be skipped (configured in dosync.yaml)
 		if cfg != nil && cfg.Services != nil {
 			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
@@ -672,7 +680,9 @@ func getResolvedComposeConfig(filePath string, envFilePath string, verbose bool)
 	err := cmd.Run()
 	if err != nil {
 		// Log the error but fall back to raw file read for backward compatibility
-		logVerbose(verbose, fmt.Sprintf("Warning: docker compose config failed: %v, stderr: %s. Falling back to raw file read.", err, stderr.String()))
+		logVerbose(verbose, fmt.Sprintf("Warning: docker compose config failed: %v, stderr: %s. "+
+			"Falling back to raw file read. NOTE: Environment variables like ${VAR} will NOT be resolved. "+
+			"If your compose file uses variables, ensure .env is mounted and ENV_FILE is set.", err, stderr.String()), true)
 		return os.ReadFile(filePath)
 	}
 

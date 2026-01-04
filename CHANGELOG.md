@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.3.24] - 2026-01-03
+
+### Fixed
+- **Unresolved environment variable detection**: DOSync now detects and clearly reports when compose file has unresolved `${VAR}` patterns
+- Previously would fail with confusing "invalid repository format" errors
+- Now logs helpful error message explaining how to configure .env file mounting
+
+### Technical Details
+- Added check in `checkAndUpdateServices()` for unresolved environment variables in image URLs
+- Improved `getResolvedComposeConfig()` warning message when `docker compose config` fails
+- Error message includes example of proper .env mounting configuration
+
 ## [v0.3.23] - 2026-01-02
 
 ### Fixed
