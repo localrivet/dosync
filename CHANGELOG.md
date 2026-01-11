@@ -1,6 +1,22 @@
 # Changelog
 
-## [v0.3.25] - 2026-01-03
+## [v0.3.26] - 2026-01-11
+
+### Fixed
+- **CRITICAL**: Reverted v0.3.25 change that caused database recreation and DATA LOSS
+- Restored `--no-deps` flag to prevent Docker Compose from recreating dependencies
+- Services marked `skip: true` are now properly protected again
+
+### Trade-off
+- `depends_on` health checks are not waited on by Docker Compose
+- Services may start before dependencies are ready (DNS lookup failures possible)
+- Workaround: Add retry logic to apps, or manually restart after deployment
+
+### Technical Details
+- Re-added `--no-deps` to `buildDockerComposeArgs()` in `internal/replica/update.go`
+- Future improvement planned: DOSync will implement its own health polling
+
+## [v0.3.25] - 2026-01-03 [BROKEN - DO NOT USE]
 
 ### Fixed
 - **CRITICAL**: Respect `depends_on` health checks during container updates

@@ -290,12 +290,18 @@ func buildDockerComposeArgs(filePath, projectName, envFilePath, serviceName stri
 		args = append(args, "--env-file", envFilePath)
 	}
 
-	// Note: We intentionally do NOT use --no-deps here.
-	// This allows Docker Compose to respect depends_on health checks.
-	// Without this, services may start before their dependencies are ready,
-	// causing DNS lookup failures (e.g., "lookup postgres on 127.0.0.11:53: server misbehaving").
-	// Rollback operations use their own command with --no-deps to avoid cascading restarts.
-	args = append(args, "up", "-d")
+	// CRITICAL: Always use --no-deps to prevent Docker Compose from recreating dependencies.
+	// Without this, services marked skip:true (like databases) can still be recreated
+	// when updating a dependent service, causing DATA LOSS.
+	//
+	// Trade-off: This means depends_on health checks are not waited on by Docker Compose.
+	// Services may start before dependencies are ready (DNS lookup failures).
+	// Workaround: Apps should have retry logic for database connections, or
+	// manually restart after deployment if needed.
+	//
+	// Future improvement: DOSync should implement its own health polling to wait
+	// for dependencies before starting services, giving us both safety and health checks.
+	args = append(args, "up", "-d", "--no-deps")
 	if forceRecreate {
 		args = append(args, "--force-recreate")
 	}
