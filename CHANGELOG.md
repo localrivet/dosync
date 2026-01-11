@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.3.27] - 2026-01-11
+
+### Added
+- **Dependency Health Polling**: DOSync now waits for dependencies to be healthy before starting a service
+- Best of both worlds: `--no-deps` protects databases from recreation, DOSync polls dependency health
+- Parses `depends_on` with `condition: service_healthy` from compose file
+- Uses `docker inspect` to poll dependency health status before starting dependent services
+
+### How it Works
+1. Before starting/restarting a service, DOSync parses its `depends_on` entries
+2. For each dependency with `condition: service_healthy`, DOSync polls `docker inspect`
+3. Only proceeds when all health-check dependencies are healthy (or timeout reached)
+4. Then runs `docker compose up --no-deps` to start only the target service
+
+### Technical Details
+- New file: `internal/replica/dependency.go` with `WaitForDependencies()` function
+- Integrated into `UpdateDockerComposeAndRestart()`, `startNewServices()`, and `reconcileStoppedContainers()`
+- Default timeout: 120 seconds, poll interval: 2 seconds
+- Non-blocking on timeout: logs warning but proceeds with update
+
 ## [v0.3.26] - 2026-01-11
 
 ### Fixed
@@ -7,14 +27,8 @@
 - Restored `--no-deps` flag to prevent Docker Compose from recreating dependencies
 - Services marked `skip: true` are now properly protected again
 
-### Trade-off
-- `depends_on` health checks are not waited on by Docker Compose
-- Services may start before dependencies are ready (DNS lookup failures possible)
-- Workaround: Add retry logic to apps, or manually restart after deployment
-
 ### Technical Details
 - Re-added `--no-deps` to `buildDockerComposeArgs()` in `internal/replica/update.go`
-- Future improvement planned: DOSync will implement its own health polling
 
 ## [v0.3.25] - 2026-01-03 [BROKEN - DO NOT USE]
 

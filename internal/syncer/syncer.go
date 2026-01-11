@@ -388,6 +388,14 @@ func startNewServices(filePath string, verbose bool, envFilePath string) {
 			projectName = "app" // fallback
 		}
 
+		// Wait for dependencies to be healthy before starting this service
+		depConfig := replica.DefaultDependencyHealthConfig()
+		depConfig.Verbose = verbose
+		depConfig.ProjectName = projectName
+		if err := replica.WaitForDependencies(composeFile, serviceName, depConfig); err != nil {
+			logVerbose(verbose, fmt.Sprintf("Warning: failed waiting for dependencies for %s: %v (proceeding anyway)", serviceName, err), true)
+		}
+
 		// Start the new service
 		// CRITICAL: Use BuildDockerComposeArgs to ensure --env-file is passed
 		cmdArgs := replica.BuildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, false)
@@ -508,6 +516,14 @@ func reconcileStoppedContainers(filePath string, verbose bool, envFilePath strin
 		projectName := extractProjectNameFromComposeContent(composeFile)
 		if projectName == "" {
 			projectName = "app"
+		}
+
+		// Wait for dependencies to be healthy before restarting this service
+		depConfig := replica.DefaultDependencyHealthConfig()
+		depConfig.Verbose = verbose
+		depConfig.ProjectName = projectName
+		if err := replica.WaitForDependencies(composeFile, serviceName, depConfig); err != nil {
+			logVerbose(verbose, fmt.Sprintf("RECONCILIATION: Warning: failed waiting for dependencies for %s: %v (proceeding anyway)", serviceName, err), true)
 		}
 
 		cmdArgs := replica.BuildDockerComposeArgs(filePath, projectName, envFilePath, serviceName, false)

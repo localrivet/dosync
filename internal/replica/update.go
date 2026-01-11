@@ -122,6 +122,19 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 	// This prevents "container name already in use" errors from orphaned containers
 	removeStaleContainers(projectName, serviceName, verbose)
 
+	// CRITICAL: Wait for dependencies to be healthy before starting this service.
+	// This ensures services with depends_on: condition: service_healthy work correctly
+	// even though we use --no-deps (to protect skipped services from recreation).
+	// DOSync handles the health polling ourselves instead of relying on Docker Compose.
+	depConfig := DefaultDependencyHealthConfig()
+	depConfig.Verbose = verbose
+	depConfig.ProjectName = projectName
+	if err := WaitForDependencies(input, serviceName, depConfig); err != nil {
+		logVerbose(verbose, fmt.Sprintf("Warning: failed waiting for dependencies: %v (proceeding anyway)", err))
+		// Don't fail - proceed with the update. The dependency might become healthy,
+		// or the app might have its own retry logic.
+	}
+
 	// Simply run docker compose up to start the new container
 	// The strategy system (internal/strategy/*) handles rolling updates, health checks, and rollback
 	// Use --force-recreate to handle stale containers that block recreation
