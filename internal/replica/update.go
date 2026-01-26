@@ -34,51 +34,60 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		logVerbose(verbose, fmt.Sprintf("Warning: Could not create backup file: %s", err))
 	}
 
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
+	// Read and parse the compose file, ensuring the file handle is closed before writing.
+	// This prevents issues with stale file handles when the file has been modified externally
+	// (e.g., by an editor that does rename-replace like vim).
 	var updatedLines []string
-	imageUpdated := false
-	scanner := bufio.NewScanner(file)
+	var imageUpdated bool
+	var scanErr error
 
 	serviceRegex := regexp.MustCompile(`(?m)^(\s*)([a-zA-Z0-9_-]+):\s*$`)
 	imageRegex := regexp.MustCompile(`(?m)^(\s*)image:(\s*)(.+)$`)
 
-	currentService := ""
-	imageIndent := ""
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if matches := serviceRegex.FindStringSubmatch(line); matches != nil {
-			currentService = matches[2]
-			updatedLines = append(updatedLines, line)
-			continue
+	// Scope the file read to ensure handle is closed before writing
+	func() {
+		file, err := os.Open(filePath)
+		if err != nil {
+			scanErr = err
+			return
 		}
+		defer file.Close()
 
-		if currentService == serviceName {
-			if matches := imageRegex.FindStringSubmatch(line); matches != nil {
-				imageIndent = matches[1]
-				imageValue := matches[3]
+		scanner := bufio.NewScanner(file)
+		currentService := ""
 
-				parts := strings.Split(imageValue, ":")
-				if len(parts) == 2 {
-					updatedImage := parts[0] + ":" + newTag
-					updatedLines = append(updatedLines, imageIndent+"image: "+updatedImage)
-					imageUpdated = true
-					continue
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			if matches := serviceRegex.FindStringSubmatch(line); matches != nil {
+				currentService = matches[2]
+				updatedLines = append(updatedLines, line)
+				continue
+			}
+
+			if currentService == serviceName {
+				if matches := imageRegex.FindStringSubmatch(line); matches != nil {
+					imageIndent := matches[1]
+					imageValue := matches[3]
+
+					parts := strings.Split(imageValue, ":")
+					if len(parts) == 2 {
+						updatedImage := parts[0] + ":" + newTag
+						updatedLines = append(updatedLines, imageIndent+"image: "+updatedImage)
+						imageUpdated = true
+						continue
+					}
 				}
 			}
+
+			updatedLines = append(updatedLines, line)
 		}
 
-		updatedLines = append(updatedLines, line)
-	}
+		scanErr = scanner.Err()
+	}()
 
-	if err := scanner.Err(); err != nil {
-		return err
+	if scanErr != nil {
+		return scanErr
 	}
 
 	if !imageUpdated {
@@ -96,6 +105,11 @@ func UpdateDockerComposeAndRestart(serviceName, newTag, filePath string, verbose
 		fmt.Fprintln(writer, line)
 	}
 	if err := writer.Flush(); err != nil {
+		return err
+	}
+	// Sync to ensure changes are written to disk before continuing.
+	// This prevents issues where subsequent reads see stale cached data.
+	if err := outputFile.Sync(); err != nil {
 		return err
 	}
 
