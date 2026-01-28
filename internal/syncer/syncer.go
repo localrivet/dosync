@@ -92,7 +92,58 @@ type DockerCompose struct {
 
 // Service represents a single service in docker-compose.
 type Service struct {
-	Image string `yaml:"image"`
+	Image  string            `yaml:"image"`
+	Labels ServiceLabels     `yaml:"labels"`
+}
+
+// ServiceLabels handles both array and map label formats in docker-compose.
+// Array format: ["key=value", "key2=value2"]
+// Map format: {key: value, key2: value2}
+type ServiceLabels map[string]string
+
+// UnmarshalYAML handles both array and map formats for labels
+func (s *ServiceLabels) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Try map format first
+	var mapLabels map[string]string
+	if err := unmarshal(&mapLabels); err == nil {
+		*s = mapLabels
+		return nil
+	}
+
+	// Try array format
+	var arrayLabels []string
+	if err := unmarshal(&arrayLabels); err == nil {
+		*s = make(map[string]string)
+		for _, label := range arrayLabels {
+			parts := strings.SplitN(label, "=", 2)
+			if len(parts) == 2 {
+				(*s)[parts[0]] = parts[1]
+			}
+		}
+		return nil
+	}
+
+	// Default to empty map
+	*s = make(map[string]string)
+	return nil
+}
+
+// ShouldSkip returns true if the service has dosync.skip=true label
+func (s ServiceLabels) ShouldSkip() bool {
+	if s == nil {
+		return false
+	}
+	val, exists := s["dosync.skip"]
+	return exists && (val == "true" || val == "\"true\"")
+}
+
+// HasSkipLabel returns true if the dosync.skip label is explicitly set (to any value)
+func (s ServiceLabels) HasSkipLabel() bool {
+	if s == nil {
+		return false
+	}
+	_, exists := s["dosync.skip"]
+	return exists
 }
 
 // DOTagResponse is the DigitalOcean API response for image tags.
@@ -154,11 +205,26 @@ func checkAndUpdateServices(filePath string, verbose bool, envFilePath string) {
 			continue
 		}
 
-		// Check if service should be skipped (configured in dosync.yaml)
-		if cfg != nil && cfg.Services != nil {
-			if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
-				logVerbose(verbose, fmt.Sprintf("SKIPPING service %s as configured (skip=true)", serviceName))
+		// Check if service should be skipped
+		// Priority: Labels override dosync.yaml config
+		// 1. If label dosync.skip=true → skip
+		// 2. If label dosync.skip=false → do NOT skip (even if dosync.yaml says skip)
+		// 3. If no label → fall back to dosync.yaml config
+		if service.Labels.HasSkipLabel() {
+			// Label is explicitly set - it overrides dosync.yaml
+			if service.Labels.ShouldSkip() {
+				logVerbose(verbose, fmt.Sprintf("SKIPPING service %s via label (dosync.skip=true)", serviceName))
 				continue
+			}
+			// Label explicitly set to false - continue processing even if dosync.yaml says skip
+			logVerbose(verbose, fmt.Sprintf("Service %s: label dosync.skip=false overrides any config", serviceName))
+		} else {
+			// No label - fall back to dosync.yaml config
+			if cfg != nil && cfg.Services != nil {
+				if serviceConfig, exists := cfg.Services[serviceName]; exists && serviceConfig.Skip {
+					logVerbose(verbose, fmt.Sprintf("SKIPPING service %s as configured in dosync.yaml (skip=true)", serviceName))
+					continue
+				}
 			}
 		}
 

@@ -649,3 +649,195 @@ func TestGetActualRunningImageTag(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceLabels_ShouldSkip(t *testing.T) {
+	tests := []struct {
+		name     string
+		labels   ServiceLabels
+		expected bool
+	}{
+		{
+			name:     "nil labels",
+			labels:   nil,
+			expected: false,
+		},
+		{
+			name:     "empty labels",
+			labels:   ServiceLabels{},
+			expected: false,
+		},
+		{
+			name:     "no dosync.skip label",
+			labels:   ServiceLabels{"other": "value"},
+			expected: false,
+		},
+		{
+			name:     "dosync.skip=true",
+			labels:   ServiceLabels{"dosync.skip": "true"},
+			expected: true,
+		},
+		{
+			name:     "dosync.skip with quotes",
+			labels:   ServiceLabels{"dosync.skip": "\"true\""},
+			expected: true,
+		},
+		{
+			name:     "dosync.skip=false",
+			labels:   ServiceLabels{"dosync.skip": "false"},
+			expected: false,
+		},
+		{
+			name:     "dosync.skip=yes (not supported)",
+			labels:   ServiceLabels{"dosync.skip": "yes"},
+			expected: false,
+		},
+		{
+			name:     "dosync.skip with mixed case (not supported)",
+			labels:   ServiceLabels{"dosync.skip": "True"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.labels.ShouldSkip()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestServiceLabels_HasSkipLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		labels   ServiceLabels
+		expected bool
+	}{
+		{
+			name:     "nil labels",
+			labels:   nil,
+			expected: false,
+		},
+		{
+			name:     "empty labels",
+			labels:   ServiceLabels{},
+			expected: false,
+		},
+		{
+			name:     "no dosync.skip label",
+			labels:   ServiceLabels{"other": "value"},
+			expected: false,
+		},
+		{
+			name:     "dosync.skip=true has label",
+			labels:   ServiceLabels{"dosync.skip": "true"},
+			expected: true,
+		},
+		{
+			name:     "dosync.skip=false has label",
+			labels:   ServiceLabels{"dosync.skip": "false"},
+			expected: true,
+		},
+		{
+			name:     "dosync.skip empty string has label",
+			labels:   ServiceLabels{"dosync.skip": ""},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.labels.HasSkipLabel()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestServiceLabels_UnmarshalYAML(t *testing.T) {
+	t.Run("map format", func(t *testing.T) {
+		yamlData := `
+labels:
+  dosync.skip: "true"
+  other.label: value
+`
+		var service struct {
+			Labels ServiceLabels `yaml:"labels"`
+		}
+		err := yaml.Unmarshal([]byte(yamlData), &service)
+		assert.NoError(t, err)
+		assert.True(t, service.Labels.ShouldSkip())
+		assert.Equal(t, "value", service.Labels["other.label"])
+	})
+
+	t.Run("array format", func(t *testing.T) {
+		yamlData := `
+labels:
+  - dosync.skip=true
+  - other.label=value
+`
+		var service struct {
+			Labels ServiceLabels `yaml:"labels"`
+		}
+		err := yaml.Unmarshal([]byte(yamlData), &service)
+		assert.NoError(t, err)
+		assert.True(t, service.Labels.ShouldSkip())
+		assert.Equal(t, "value", service.Labels["other.label"])
+	})
+
+	t.Run("empty labels", func(t *testing.T) {
+		yamlData := `
+labels:
+`
+		var service struct {
+			Labels ServiceLabels `yaml:"labels"`
+		}
+		err := yaml.Unmarshal([]byte(yamlData), &service)
+		assert.NoError(t, err)
+		assert.False(t, service.Labels.ShouldSkip())
+	})
+
+	t.Run("no labels key", func(t *testing.T) {
+		yamlData := `
+image: nginx:latest
+`
+		var service struct {
+			Image  string        `yaml:"image"`
+			Labels ServiceLabels `yaml:"labels"`
+		}
+		err := yaml.Unmarshal([]byte(yamlData), &service)
+		assert.NoError(t, err)
+		assert.False(t, service.Labels.ShouldSkip())
+	})
+}
+
+func TestCheckAndUpdateServices_SkipViaLabel(t *testing.T) {
+	// Test that services with dosync.skip=true label are skipped
+	dockerComposeYAML := `
+services:
+  web:
+    image: nginx:latest
+    labels:
+      dosync.skip: "true"
+  db:
+    image: postgres:13
+    labels:
+      - dosync.skip=true
+  api:
+    image: registry.digitalocean.com/myreg/myrepo:v1.0.0
+`
+	tmpFile, err := os.CreateTemp("", "compose-skip-*.yml")
+	assert.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	_, err = tmpFile.Write([]byte(dockerComposeYAML))
+	assert.NoError(t, err)
+	tmpFile.Close()
+
+	// Ensure config is loaded
+	_, err = config.LoadConfig("", nil)
+	assert.NoError(t, err)
+
+	// Reset to real YAML unmarshal
+	YamlUnmarshal = yaml.Unmarshal
+
+	// Should not panic or crash - web and db should be skipped via label
+	checkAndUpdateServices(tmpFile.Name(), true, "")
+}
